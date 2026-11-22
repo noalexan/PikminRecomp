@@ -146,3 +146,17 @@ def test_game_never_calls_translated_jaudio(generated, game_image):
             if callee and callee.library == "jaudio.o" and callee.name not in allowed:
                 offenders.add(callee.name)
     assert not offenders, sorted(offenders)
+
+
+def test_hooks_keep_the_original(generated, game_image):
+    # "hook" entries: translated as f_<addr>_orig, every call (self-recursion included) and the
+    # function table go through hle_<name>, whose weak default calls the original.
+    _, out = generated
+    src = _all_gen(out)
+    addr = _addr_of(game_image, "draw__7P2DPaneFiiPC14P2DGrafContextb")
+    hle = "hle_draw__7P2DPaneFiiPC14P2DGrafContextb"
+    body = src[src.index(f"void f_{addr:08x}_orig("):]
+    body = body[: body.index("\n}\n")]
+    assert f"{hle}(c);" in body and f"f_{addr:08x}_orig(c);" not in body
+    assert f"{{0x{addr:08x}u, {hle}}}" in (out / "functable.c").read_text()
+    assert f"void {hle}(ppc_ctx *c) {{ f_{addr:08x}_orig(c); }}" in (out / "hle_stubs.c").read_text()
