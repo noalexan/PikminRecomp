@@ -140,7 +140,7 @@ python3 -m recomp --dol orig/GPIP01/sys/main.dol --map orig/GPIP01/files/dataDir
   D=$PWD/build/cmake/_deps
   cmake -S . -B build/release -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$HOME/.local \
       -DFETCHCONTENT_FULLY_DISCONNECTED=ON $(for n in aurora dawn imgui nlohmann_json sqlite3 tracy xxhash; do \
-      echo -DFETCHCONTENT_SOURCE_DIR_${n^^}=$D/$n-src; done)
+      echo -DFETCHCONTENT_SOURCE_DIR_$(echo $n | tr a-z A-Z)=$D/$n-src; done)
   cmake --build build/release --target pikmin && cmake --install build/release
   ```
   The installed copy is the Release build (about 42 MB); `build/cmake` stays the Debug dev build (about 595 MB, mostly debug info). Re-run the build and install after changes: the installed binary is a copy.
