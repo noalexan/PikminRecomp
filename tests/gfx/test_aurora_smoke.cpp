@@ -17,9 +17,8 @@ int main() {
     std::printf("centre pixel %08x (%ux%u)\n", c, g_test_w, g_test_h);
     if (c != 0xFF0080FFu) {
         std::fprintf(stderr, "expected ff0080ff\n");
-        return 1;
+        gfx_test_exit(1);
     }
     std::puts("ok");
-    std::fflush(stdout);
-    std::_Exit(0);  // skip aurora_shutdown: it can block on the headless surface
+    gfx_test_exit(0);  // skip aurora_shutdown: it can block on the headless surface
 }
