@@ -10,3 +10,6 @@ override = [
 
 [functions]
 # Per-function exceptions: guest symbol = "override" | "translate"
+# Audio is stubbed for the headless boot (Plan 2): skip JAudio's start-up entirely.
+Jac_Init = "override"
+StartAudioThread = "override"

@@ -121,3 +121,11 @@ def test_hle_stubs_are_weak(generated):
     _, out = generated
     lines = [l for l in (out / "hle_stubs.c").read_text().splitlines() if "void hle_" in l]
     assert lines and all(l.startswith("__attribute__((weak)) void hle_") for l in lines)
+
+
+def test_jaudio_entry_points_overridden(generated, game_image):
+    _, out = generated
+    src = _all_gen(out)
+    for name in ("Jac_Init", "StartAudioThread"):
+        addr = _addr_of(game_image, name)
+        assert not re.search(rf"^void f_{addr:08x}\(", src, re.M), name
