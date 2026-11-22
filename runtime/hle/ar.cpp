@@ -40,6 +40,9 @@ void hle_ARQInit(ppc_ctx* c) { HLE_ENTRY(c, "ARQInit"); }
 void hle_ARQPostRequest(ppc_ctx* c) {
     HLE_ENTRY(c, "ARQPostRequest");
     uint32_t req = arg(c, 0), type = arg(c, 2), src = arg(c, 4), dst = arg(c, 5), len = arg(c, 6), cb = arg(c, 7);
+    // Fill the caller's ARQRequest like the SDK does; completion callbacks read it (e.g. req->owner).
+    const uint32_t fields[8] = {0, arg(c, 1), type, arg(c, 3), src, dst, len, cb};
+    for (uint32_t i = 0; i < 8; ++i) rt::wr32(c, req + 4 * i, fields[i]);
     if (type == 0) {
         std::memcpy(aram_ptr(dst, len), rt::host(c, src, len), len);  // main RAM -> ARAM
     } else {
