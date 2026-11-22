@@ -34,9 +34,7 @@ float g_pitch = 0.f;                     // degrees added to the camera elevatio
 constexpr float kYawSpeed = 2.6f;        // rad/s at full deflection
 constexpr float kPitchSpeed = 70.f;      // deg/s at full deflection
 constexpr float kMinElevation = 8.f, kMaxElevation = 82.f;
-// Game-time frame length the smoothing factors were tuned for: PAL gameplay runs at 25 fps with
-// the delta clamped to 1/30 s.
-constexpr float kRefFrame = 1.f / 30.f;
+constexpr float kRefFrame = 1.f / 30.f;  // fallback frame time
 
 float rdf(ppc_ctx* c, uint32_t ea) {
     uint32_t u = rt::rd32(c, ea);
@@ -55,10 +53,10 @@ float frame_time(ppc_ctx* c) {
     return gsys ? rdf(c, gsys + kFrameTimeOff) : kRefFrame;
 }
 
-// A per-frame lerp fraction tuned at kRefFrame, converted for a frame of `dt` seconds.
-float rescale_fraction(float f, float dt) {
+// A per-frame lerp fraction tuned for the original frame, converted for `n` original frames.
+float rescale_fraction(float f, float n) {
     if (f <= 0.f || f >= 1.f) return f;
-    return 1.f - std::pow(1.f - f, dt / kRefFrame);
+    return 1.f - std::pow(1.f - f, n);
 }
 
 float shape(float v) {  // dead zone + quadratic response
@@ -144,7 +142,7 @@ void hle_getCurrentHomingSpeed__10PcamCameraFv(ppc_ctx* c) {
     HLE_ENTRY(c, "PcamCamera::getCurrentHomingSpeed");
     if (f_80121994_orig) f_80121994_orig(c);
     if (enh::original_timing()) return;
-    const float f = enh::rescale_fraction(static_cast<float>(c->f[1].ps0), enh::frame_time(c));
+    const float f = enh::rescale_fraction(static_cast<float>(c->f[1].ps0), enh::orig_frames());
     c->f[1].ps0 = c->f[1].ps1 = static_cast<double>(f);
 }
 
@@ -157,11 +155,11 @@ void hle_makePosture__10PcamCameraFv(ppc_ctx* c) {
         if (f_80120ffc_orig) f_80120ffc_orig(c);
         return;
     }
-    const float dt = enh::frame_time(c);
+    const float n = enh::orig_frames();
     const float fov = enh::rdf(c, p + 0xac), turn = enh::rdf(c, p + 0xb8), step = enh::rdf(c, p + 0xd8);
-    enh::wrf(c, p + 0xac, enh::rescale_fraction(fov, dt));
-    enh::wrf(c, p + 0xb8, enh::rescale_fraction(turn, dt));
-    enh::wrf(c, p + 0xd8, step * dt / enh::kRefFrame);
+    enh::wrf(c, p + 0xac, enh::rescale_fraction(fov, n));
+    enh::wrf(c, p + 0xb8, enh::rescale_fraction(turn, n));
+    enh::wrf(c, p + 0xd8, step * n);
     f_80120ffc_orig(c);
     enh::wrf(c, p + 0xac, fov);
     enh::wrf(c, p + 0xb8, turn);

@@ -25,6 +25,9 @@ float view_aspect();
 // Game frames per second in the unlocked mode (target_fps or the display refresh).
 int effective_fps();
 inline bool original_timing() { return settings().target_fps < 0; }
+// How many original (PAL) game frames this frame stands for: real frame time x the original frame
+// rate (50 Hz / retraces per frame). 1 in the original mode. Frame-counted systems scale by it.
+float orig_frames();
 
 // Hooks from the GX shims (graphics builds only).
 void on_set_projection(float m[16], uint32_t type);  // adjusts 2D projections in place

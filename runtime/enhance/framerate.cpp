@@ -20,6 +20,7 @@ extern "C" {
 // Original translations of the hooked functions (weak: unit tests link the runtime without them).
 __attribute__((weak)) void f_80047c68_orig(ppc_ctx* c);  // DGXGraphics::waitRetrace
 __attribute__((weak)) void f_80044834_orig(ppc_ctx* c);  // System::updateSysClock
+__attribute__((weak)) void f_800707f0_orig(ppc_ctx* c);  // CinematicPlayer::update
 __attribute__((weak)) void hle_GXSetZMode(ppc_ctx* c);
 __attribute__((weak)) void hle_GXCopyDisp(ppc_ctx* c);
 }
@@ -34,6 +35,11 @@ Settings& settings() {
     static Settings s;
     return s;
 }
+
+namespace {
+float g_orig_frames = 1.f;
+}
+float orig_frames() { return original_timing() ? 1.f : g_orig_frames; }
 
 int effective_fps() {
     const Settings& s = settings();
@@ -131,6 +137,7 @@ void hle_updateSysClock__6SystemFv(ppc_ctx* c) {
         // clamped to 1/30 s, so at 25 fps the game ran at 0.833x real time. Same factor here.
         const uint32_t rpf = std::max<uint32_t>(1, rt::rd32(c, self + 0x14));
         const float orig_frame = 0.02f * static_cast<float>(rpf);
+        enh::g_orig_frames = std::min(dt / orig_frame, 4.f);
         dt *= std::min(orig_frame, 1.f / 30.f) / orig_frame;
         std::memcpy(&u, &dt, 4);
         rt::wr32(c, self + enh::kFrameTimeOff, u);
@@ -155,6 +162,21 @@ void hle_updateSysClock__6SystemFv(ppc_ctx* c) {
         last_retrace = r;
         last_ticks = now;
     }
+}
+
+// Cinematics (intro, title, day cutscenes) advance their frame (+0x2a4) by 1 per game frame.
+// Make that 1 per original frame of real time.
+void hle_update__15CinematicPlayerFv(ppc_ctx* c) {
+    HLE_ENTRY(c, "CinematicPlayer::update");
+    const uint32_t self = rt::arg(c, 0);
+    if (f_800707f0_orig) f_800707f0_orig(c);
+    if (enh::original_timing() || rt::arg(c, 0) != 0) return;  // r3 = 1: finished this frame
+    uint32_t u = rt::rd32(c, self + 0x2a4);
+    float frame;
+    std::memcpy(&frame, &u, 4);
+    frame += enh::orig_frames() - 1.f;
+    std::memcpy(&u, &frame, 4);
+    rt::wr32(c, self + 0x2a4, u);
 }
 
 }  // extern "C"
