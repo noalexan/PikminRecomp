@@ -3,7 +3,12 @@
 #include <cstdio>
 #include <unordered_map>
 
+#include "rt/gfx.hpp"
 #include "rt/guest.hpp"
+
+#ifdef PIKMIN_GRAPHICS
+#include "gx/fifo.hpp"  // aurora internal: raw big-endian FIFO writes
+#endif
 #include "rt/log.hpp"
 
 namespace rt {
@@ -37,6 +42,16 @@ __attribute__((weak)) uint32_t ppc_mmio_read(uint32_t phys, int size) {
 __attribute__((weak)) void ppc_mmio_write(uint32_t phys, uint32_t value, int size) {
     if (phys == rt::kWgPipe) {
         rt::g_wgpipe_bytes += static_cast<uint64_t>(size);
+#ifdef PIKMIN_GRAPHICS
+        // Inline vertex data/commands (GXPosition3f32 etc. compile to these stores): straight into
+        // aurora's FIFO, byte-exact. Float stores arrive as their bit pattern.
+        if (rt::gfx_active()) {
+            namespace fifo = aurora::gx::fifo;
+            if (size == 1) fifo::write_u8(static_cast<uint8_t>(value));
+            else if (size == 2) fifo::write_u16(static_cast<uint16_t>(value));
+            else fifo::write_u32(value);
+        }
+#endif
         return;
     }
     rt::note(phys, "write");

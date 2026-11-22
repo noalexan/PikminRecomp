@@ -1,3 +1,4 @@
+import re
 import subprocess
 
 import pytest
@@ -38,3 +39,16 @@ def test_strong_hle_definitions_linked():
     assert kinds.get("hle_OSReport") == "T"
     assert kinds.get("hle_GXInit") == "T"
     assert kinds.get("hle_OSAllocFromHeap") == "W"  # still an unimplemented weak stub
+
+
+def test_every_referenced_gx_function_has_a_shim():
+    if not PIKMIN.exists():
+        pytest.skip("pikmin executable not built")
+    gen = ROOT / "build/cmake/gen"
+    referenced = set()
+    for f in gen.glob("gen_*.c"):
+        referenced |= set(re.findall(r"\b(hle_GX\w+)\(c\)", f.read_text()))
+    out = subprocess.run(["nm", PIKMIN], capture_output=True, text=True, check=True).stdout
+    kinds = {line.split()[-1]: line.split()[-2] for line in out.splitlines() if len(line.split()) >= 2}
+    weak = sorted(n for n in referenced if kinds.get(n) != "T")
+    assert len(referenced) == 77 and not weak, weak

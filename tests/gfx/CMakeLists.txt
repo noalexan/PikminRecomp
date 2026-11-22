@@ -27,3 +27,4 @@ function(pikmin_shim_test name)
 endfunction()
 
 pikmin_shim_test(test_gx_state)
+pikmin_shim_test(test_gx_geometry)

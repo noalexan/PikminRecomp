@@ -12,4 +12,6 @@ target_link_libraries(pikmin_rt PUBLIC m)
 if (PIKMIN_GRAPHICS)
     target_link_libraries(pikmin_rt PUBLIC aurora::core aurora::gx aurora::pad)
     target_compile_definitions(pikmin_rt PUBLIC PIKMIN_GRAPHICS=1)
+    # mmio.cpp feeds aurora's FIFO directly (internal header; aurora is pinned).
+    target_include_directories(pikmin_rt PRIVATE ${aurora_SOURCE_DIR}/lib ${aurora_SOURCE_DIR}/include)
 endif ()
