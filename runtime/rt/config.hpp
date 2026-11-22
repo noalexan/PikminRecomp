@@ -11,7 +11,7 @@ struct Config {
     bool headless = false;
     int window_width = 1920;
     int window_height = 1440;
-    bool fullscreen = false;
+    bool fullscreen = true;  // user preference: fullscreen by default
     bool vsync = true;
     std::vector<std::string> warnings;
 };

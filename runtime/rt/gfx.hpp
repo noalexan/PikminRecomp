@@ -8,7 +8,7 @@ namespace rt {
 struct GfxOptions {
     bool headless_surface = false;  // offscreen surface on the real GPU (tests, screenshots)
     uint32_t width = 1920, height = 1440;
-    bool fullscreen = false;
+    bool fullscreen = true;
     bool vsync = true;
     std::string state_dir;          // aurora settings/caches; required (never defaults into $HOME silently)
     const void* guest_ram_end = nullptr;  // bound for inferred vertex array extents

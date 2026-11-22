@@ -89,6 +89,7 @@ bool gfx_init(const GfxOptions& opt) {
     cfg.desiredBackend = BACKEND_VULKAN;
     cfg.logCallback = aurora_log;
     cfg.vsync = opt.vsync;
+    cfg.startFullscreen = opt.fullscreen && !opt.headless_surface;
     cfg.emulateXfb = true;
     cfg.mem1Size = 0;
     cfg.mem2Size = 0;
