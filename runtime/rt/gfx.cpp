@@ -17,6 +17,8 @@
 namespace rt {
 
 __attribute__((weak)) void gx_close_open_draw() {}
+// Weak: graphics unit tests link without VI (then the present count is used).
+__attribute__((weak)) uint32_t vi_retrace_count();
 
 GxCounters& gx_counters() {
     static GxCounters c;
@@ -154,7 +156,10 @@ void gfx_present() {
     if (!g_active) return;
     gx_close_open_draw();
     ++g_presents;
-    if (!g_shot.path.empty() && !g_shot.captured && g_presents == g_shot.frame) {
+    // Screenshots are keyed to the retrace count (game frames); without VI (unit tests) to presents.
+    const uint32_t retraces = vi_retrace_count ? vi_retrace_count() : 0;
+    const uint32_t now = retraces ? retraces : g_presents;
+    if (!g_shot.path.empty() && !g_shot.captured && now >= g_shot.frame) {
         if (!g_shot.stream) g_shot.stream = AuroraReadbackCreateStream();
         g_shot.key = g_presents;
         g_shot.captured = AuroraReadbackCaptureColor(g_shot.stream, g_shot.key, &g_shot.w, &g_shot.h);
