@@ -16,6 +16,7 @@
 #include <thread>
 #include <vector>
 
+#include "rt/audio_out.hpp"
 #include "rt/boot.hpp"
 #include "rt/clock.hpp"
 #include "rt/config.hpp"
@@ -204,6 +205,9 @@ int main(int argc, char** argv) {
     if (frames) rt::vi_set_frame_limit(frames);
     if (watchdog > 0) start_watchdog(watchdog);
 
+    // Sound plays only in real-time runs with graphics; --headless/--fast stay deviceless (the WAV
+    // dump still works there).
+    rt::audio_out_init(cfg.audio && !headless && !fast);
     rt::g_card_dir = state_dir() + "/card_a";
     rt::log("boot", "disc %s, %s clock", disc_path.c_str(), fast ? "fast" : "real-time");
     rt::boot_guest(&ctx, header32);

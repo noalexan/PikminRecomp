@@ -13,6 +13,7 @@ struct Config {
     int window_height = 1440;
     bool fullscreen = true;  // user preference: fullscreen by default
     bool vsync = true;
+    bool audio = true;  // sound output (never with --headless or --fast)
     std::vector<std::string> warnings;
 };
 

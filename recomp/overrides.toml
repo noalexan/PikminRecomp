@@ -10,51 +10,19 @@ override = [
 
 [functions]
 # Per-function exceptions: guest symbol = "override" | "translate"
-# Audio is stubbed for the headless boot (Plan 2): skip JAudio's start-up entirely.
-Jac_Init = "override"
-StartAudioThread = "override"
-Jac_Start = "override"  # whole JAudio start-up; its allocator needs the audio thread
-# Game-facing JAudio API (every JAudio function the game calls directly) is silent: no-op, returns 0.
-Jac_AddDVDBuffer = "override"
-Jac_BackDVDBuffer = "override"
-Jac_CheckFreeEvents = "override"
-Jac_CreateEvent = "override"
-Jac_DemoFrame = "override"
-Jac_DestroyEvent = "override"
-Jac_EnterBossMode = "override"
-Jac_ExitBossMode = "override"
-Jac_FinishDemo = "override"
-Jac_FinishPartsFindDemo = "override"
-Jac_FinishTextDemo = "override"
-Jac_Freeze = "override"
-Jac_Freeze_Precall = "override"
-Jac_GetActiveEvents = "override"
-Jac_Gsync = "override"
-Jac_InitAllEvent = "override"
-Jac_Orima_Formation = "override"
-Jac_Orima_Walk = "override"
-Jac_OutputMode = "override"
-Jac_Piki_Number = "override"
-Jac_PlayEventAction = "override"
-Jac_PlayOrimaSe = "override"
-Jac_PlaySystemSe = "override"
-Jac_SceneExit = "override"
-Jac_SceneSetup = "override"
-Jac_SetBGMVolume = "override"
-Jac_SetDemoOnyons = "override"
-Jac_SetDemoPartsCount = "override"
-Jac_SetDemoPartsID = "override"
-Jac_SetSEVolume = "override"
-Jac_StartDemo = "override"
-Jac_StartPartsFindDemo = "override"
-Jac_StartTextDemo = "override"
-Jac_StopEventAction = "override"
-Jac_StopOrimaSe = "override"
-Jac_StopSe = "override"
-Jac_StopSystemSe = "override"
-Jac_StreamMovieGetPicture = "override"
-Jac_StreamMovieInit = "override"
-Jac_StreamMovieStop = "override"
-Jac_StreamMovieUpdate = "override"
-Jac_UpdateCamera = "override"
-Jac_UpdateEventPosition = "override"
+# JAudio busy-waits on state that its audio/DVD threads or interrupts produce, with no OS call in
+# the loop. On the GameCube an interrupt preempts such a loop; here "poll" makes the function's
+# entry and loop heads scheduling points (ppc_poll). Found by grepping the decomp for empty loops.
+Jac_InitEventSystem = "poll"                          # until the audio thread registers track 0x20000
+Jac_HVQM_Init = "poll"                                # movie DVD load status, next DSP sync tick
+Jac_HVQM_ForceStop = "poll"                           # movie DVD load
+JV_LoadFile__FUlPUcUlUl = "poll"                      # DVD thread load status
+DVDT_LoadFile__FPcPUc = "poll"                        # DVD thread load status
+DVDT_LoadtoARAM_Main__FPv = "poll"                    # streaming buffer slots
+Jaf_StopSeq__FUl = "poll"                             # sequence teardown by the audio thread
+Jac_SceneSetup = "poll"                               # first_load / now_loading / boot-up BGM state
+Jac_SceneExit = "poll"                                # now_loading
+Jac_PlayBgm = "poll"                                  # sequence load state
+Jac_PrepareDemoSound__FUl = "poll"                    # stream stop_ready
+Jac_StartDemoSound__FUl = "poll"                      # stream stop_ready / start
+Jac_StartDemo = "poll"                                # now_loading

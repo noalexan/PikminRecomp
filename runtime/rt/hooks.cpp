@@ -42,4 +42,16 @@ __attribute__((weak)) void ppc_hle_missing(const char* name, uint32_t addr) {
 
 __attribute__((weak)) uint64_t ppc_timebase(void) { return rt::clock().ticks(); }
 
+// A guest busy-wait iteration: deliver due events/interrupts and let other threads run.
+void ppc_poll(ppc_ctx* c, uint32_t addr) {
+    static const bool trace = std::getenv("PIKMIN_POLL_TRACE") != nullptr;
+    if (trace) {
+        static uint32_t last = 0;
+        if (addr != last) std::fprintf(stderr, "poll %08x lr %08x r3 %08x r4 %08x\n", addr, c->lr, c->r[3], c->r[4]);
+        last = addr;
+    }
+    rt::current_function.name = "ppc_poll";
+    rt::safe_point();
+}
+
 }  // extern "C"

@@ -35,3 +35,5 @@ void ppc_mmio_write(uint32_t phys, uint32_t value, int size) {
     fprintf(stderr, "ppc_mmio_write: 0x%08" PRIx32 " = 0x%08" PRIx32 " (%d bytes)\n", phys, value, size);
     abort();
 }
+
+__attribute__((weak)) void ppc_poll(ppc_ctx *c, uint32_t addr) { (void)c; (void)addr; }
