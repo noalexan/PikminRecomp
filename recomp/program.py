@@ -27,8 +27,18 @@ def _sanitize(name: str) -> str:
 
 
 def load_overrides(img: Image, path: Path) -> set[int]:
-    cfg = tomllib.loads(path.read_text())
-    libs = set(cfg.get("libraries", {}).get("override", []))
+    try:
+        cfg = tomllib.loads(path.read_text())
+    except tomllib.TOMLDecodeError as e:
+        raise RecompError(f"{path}: invalid TOML: {e}") from None
+    override = cfg.get("libraries", {}).get("override", [])
+    if not isinstance(override, list) or not all(isinstance(x, str) for x in override):
+        raise RecompError(f"{path}: [libraries] override must be a list of library names")
+    present = {f.library for f in img.functions if f.library}
+    unknown = sorted(set(override) - present)
+    if unknown:
+        raise RecompError(f"{path}: unknown libraries in [libraries] override: {', '.join(unknown)}")
+    libs = set(override)
     per_fn = cfg.get("functions", {})
     known = {f.name for f in img.functions}
     for name, mode in per_fn.items():

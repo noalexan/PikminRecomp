@@ -69,3 +69,49 @@ def test_shard_count_and_unchanged_files_untouched(game_image, generated, tmp_pa
     generate(game_image, OVERRIDES, out, shards=16)
     after = {p.name: p.stat().st_mtime_ns for p in out.iterdir() if p.name != "stamp"}
     assert all(after[n] == before[n] for n in after)
+
+
+def _bad_overrides(tmp_path, text):
+    p = tmp_path / "overrides.toml"
+    p.write_text(text)
+    return p
+
+
+def test_malformed_overrides_is_recomp_error(game_image, tmp_path):
+    from recomp.emit import RecompError
+    from recomp.program import load_overrides
+
+    p = _bad_overrides(tmp_path, "[libraries\n")
+    with pytest.raises(RecompError, match="overrides.toml"):
+        load_overrides(game_image, p)
+
+
+def test_override_must_be_list(game_image, tmp_path):
+    from recomp.emit import RecompError
+    from recomp.program import load_overrides
+
+    p = _bad_overrides(tmp_path, '[libraries]\noverride = "gx.a"\n')
+    with pytest.raises(RecompError, match="list"):
+        load_overrides(game_image, p)
+
+
+def test_unknown_library_rejected(game_image, tmp_path):
+    from recomp.emit import RecompError
+    from recomp.program import load_overrides
+
+    p = _bad_overrides(tmp_path, '[libraries]\noverride = ["gx.A"]\n')
+    with pytest.raises(RecompError, match="gx.A"):
+        load_overrides(game_image, p)
+
+
+def test_cli_reports_bad_overrides_without_traceback(game_image, tmp_path):
+    import subprocess
+    import sys
+
+    from tests.conftest import DOL, MAP
+
+    p = _bad_overrides(tmp_path, "[libraries\n")
+    r = subprocess.run([sys.executable, "-m", "recomp", "--dol", DOL, "--map", MAP, "--overrides", p,
+                        "--out", tmp_path / "out"], capture_output=True, text=True, cwd=ROOT)
+    assert r.returncode == 2
+    assert "Traceback" not in r.stderr and "overrides.toml" in r.stderr
