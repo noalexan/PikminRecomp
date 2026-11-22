@@ -154,6 +154,52 @@ python3 -m recomp --dol orig/GPIP01/sys/main.dol --map orig/GPIP01/files/dataDir
 - **Lookup order:** `--disc PATH` (image or tree), then `disc = "..."` in config, then `<bindir>/../share/pikminrecomp/data` (installed), then `orig/GPIP01` in the checkout. So `build/cmake/pikmin` and the installed `pikmin` both run with no arguments.
 - **`cmake --install`** copies the tree (about 655 MB) to `${CMAKE_INSTALL_DATADIR}/pikminrecomp/data`. The binary and the data are Nintendo's: keep them out of git and never distribute them.
 
+## Planned: crash diagnostics
+
+Not implemented yet. The game crashes occasionally, and runs launched from the desktop entry or Steam lose stderr, so there is no evidence to work from. Do this before the Windows port, so the port has the same diagnostics.
+
+1. **Persistent log file.** `rt::log` also writes to `$XDG_STATE_HOME/pikminrecomp/logs/pikmin-<timestamp>.log` (default `~/.local/state`); keep the last 10 runs. Line-buffered and flushed on every fatal path. Start each file with the build (git hash, Debug or Release), the config values, GPU adapter and display mode.
+2. **Crash handler.**
+   - Install handlers for `SIGSEGV`, `SIGBUS`, `SIGILL`, `SIGFPE` and `SIGABRT` on an alternate signal stack, since a fiber stack may be the thing that overflowed.
+   - Write, async-signal-safely: the signal and fault address; the host backtrace (`f_<addr>` frames); the current guest thread; `c->lr`, r1 and r3–r5 from its `ppc_ctx`; whether it was in an IRQ callback; the retrace count.
+   - Then re-raise, so `coredumpctl` still gets a core.
+   - `ppc_bad_access`, `ppc_unimpl`, `ppc_hle_missing` and the watchdog write the same report.
+3. **Recent-events ring buffer.** A fixed in-memory ring (a few thousand entries) of cheap events: HLE entries (name, caller LR), DVD opens and reads, scene changes, thread switches, IRQ deliveries, GX frame boundaries. It is dumped into the crash report, so there's no logging cost until a crash. `PIKMIN_TRACE=hle,dvd,...` also prints chosen channels live.
+4. **Symbols in Release.**
+   - Build Release with `-g1` (line tables) and keep `-rdynamic`, so installed-binary backtraces show `f_<addr>` names.
+   - Optionally split the debug info into `pikmin.debug` with `objcopy --only-keep-debug`.
+   - `tools/resolve_bt.py` accepts a crash log directly and maps each `f_<addr>` to the guest function name and source object from `build.map`.
+5. **Reproducing.** `--record-input PATH` writes the pad input per retrace, in `--input-script` format. With `--fast` and the virtual clock, a recorded crash can often be replayed deterministically. Real-time runs aren't fully deterministic (host timing decides when interrupts are delivered), so log the clock mode and keep the recording alongside the crash log.
+6. **Triage.** Group crashes by their top guest frames. Fix each root cause in the HLE/runtime and add a note in `docs/superpowers/notes/`. Never patch generated code.
+
+## Planned: Windows build
+
+Not implemented yet; do it after crash diagnostics. Target: native Windows x64 build with MSVC-compatible toolchain **clang-cl** (or MinGW-w64 clang), D3D12 or Vulkan through Dawn, same game data layout. Linux stays the primary platform.
+
+1. **Toolchain and recompiler output.**
+   - Use clang (clang-cl or MinGW clang) rather than plain MSVC. The generated C relies on GCC/Clang extensions: `__attribute__((weak))` stubs, `-fwrapv`, `-ffp-contract=off` and `-fno-strict-aliasing`, plus the `.incbin` assembly blob.
+   - **Weak symbols:** COFF has no ELF-style weak definitions. Have `recomp/program.py` emit stubs only for functions with no strong `hle_*` definition. The list of strong ones comes from a scan of `runtime/` (`nm` on `pikmin_rt` at build time) or a generated registry. That also removes the need for `WHOLE_ARCHIVE`, and works on Linux too.
+   - **DOL blob:** replace `.incbin` with C23 `#embed`, or a generated C array, which works on both platforms.
+2. **Fibers.** `rt/sched.cpp` uses `ucontext`. Put a small fiber interface (`create`, `switch_to`, `destroy`) in front of it: ucontext on Linux, Win32 Fibers (`CreateFiberEx`, `SwitchToFiber`) on Windows. Keep the stack-size and stack-reuse semantics, since `OSThread` re-use retires old entries.
+3. **POSIX replacements**, each behind `rt/platform_*.cpp`:
+   - **Disc:** `pread`/`open` → `CreateFileW` + `ReadFile` with `OVERLAPPED` offsets. UTF-8 to UTF-16 paths matter for the Shift-JIS file names.
+   - **Clock:** `clock_gettime`/`CLOCK_MONOTONIC_COARSE` → `QueryPerformanceCounter`. Use `timeBeginPeriod(1)` or a high-resolution waitable timer for frame pacing.
+   - **Executable path:** `/proc/self/exe` → `GetModuleFileNameW`.
+   - **Directories:** `mkdir` → `CreateDirectoryW`. XDG paths → `%APPDATA%\pikminrecomp` (config, saves) and `%LOCALAPPDATA%\pikminrecomp\logs`.
+   - **Watchdog:** today it is a signal sent to the game thread. Use `SuspendThread` + `GetThreadContext`, or a flag checked at safe points.
+   - **Crash handler:** `SetUnhandledExceptionFilter` plus `MiniDumpWriteDump`, written next to the log. Backtraces via `CaptureStackBackTrace` + DbgHelp `SymFromAddr`, which needs a PDB.
+   - **Exit:** `rt::exit_process()` → `TerminateProcess`/`_exit`, with the same "no static destructors" rule.
+4. **Dependencies.** SDL3 comes from vcpkg, or from aurora's bundled build since there is no dnf. Dawn builds with its D3D12 backend; Vulkan is optional. Keep the aurora pin and patches; check that patch 0001 has no Linux-only code.
+5. **Build.**
+   - CMake + Ninja under a "x64 Native Tools" shell.
+   - Python 3 runs the recompiler. `powerpc64-linux-gnu-as` is only needed for the semantics tests, which can be skipped on Windows; or run them in WSL.
+   - `tools/extract_gcm.py` and `fst_paths.py` already work there.
+6. **Packaging.** `cmake --install` to a folder: `pikmin.exe`, SDL3.dll, the data tree, and a Start-menu shortcut via an optional small script instead of the `.desktop` file. Steam: add the `.exe` as a non-Steam game. The Nintendo data rule still applies: never distribute it.
+7. **CI-free verification.**
+   - The headless `--fast --frames 600` boot and the offscreen title screenshot should match the Linux output.
+   - The WAV dump should be byte-identical. Generated code is deterministic: `-ffp-contract=off`, no FMA, and the same float semantics under clang on x64.
+   - Do the screenshot comparison per GPU backend: D3D12 output may differ slightly, so compare visually, not by hash.
+
 ## Conventions
 
 - Install system dependencies with `dnf`. Anything else is project-local (`build/`) or root-owned in `/opt` (Ghidra). Never install into `$HOME`.
