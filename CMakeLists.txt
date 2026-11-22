@@ -8,6 +8,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 enable_testing()
 add_subdirectory(tests/cpu)
+add_subdirectory(runtime)
+add_subdirectory(tests/runtime)
 
 if(EXISTS ${PROJECT_SOURCE_DIR}/orig/GPIP01/sys/main.dol)
     include(runtime/gen.cmake)

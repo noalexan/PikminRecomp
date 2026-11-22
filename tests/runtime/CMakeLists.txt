@@ -1,0 +1,9 @@
+function(pikmin_rt_test name)
+    add_executable(${name} ${name}.cpp)
+    target_link_libraries(${name} PRIVATE pikmin_rt)
+    target_include_directories(${name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    add_test(NAME ${name} COMMAND ${name})
+    set_tests_properties(${name} PROPERTIES SKIP_RETURN_CODE 77)
+endfunction()
+
+pikmin_rt_test(test_guest)

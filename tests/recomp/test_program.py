@@ -115,3 +115,9 @@ def test_cli_reports_bad_overrides_without_traceback(game_image, tmp_path):
                         "--out", tmp_path / "out"], capture_output=True, text=True, cwd=ROOT)
     assert r.returncode == 2
     assert "Traceback" not in r.stderr and "overrides.toml" in r.stderr
+
+
+def test_hle_stubs_are_weak(generated):
+    _, out = generated
+    lines = [l for l in (out / "hle_stubs.c").read_text().splitlines() if "void hle_" in l]
+    assert lines and all(l.startswith("__attribute__((weak)) void hle_") for l in lines)

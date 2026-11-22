@@ -5,7 +5,10 @@
 #include <stdint.h>
 
 #ifdef __cplusplus
+#define PPC_NORETURN [[noreturn]]
 extern "C" {
+#else
+#define PPC_NORETURN _Noreturn
 #endif
 
 #define PPC_RAM_SIZE 0x01800000u /* 24 MB main RAM */
@@ -33,9 +36,9 @@ typedef void (*ppc_fn)(ppc_ctx *);
 
 /* Provided by the runtime (or test harnesses). */
 ppc_fn ppc_lookup(uint32_t addr);
-_Noreturn void ppc_unimpl(ppc_ctx *c, uint32_t addr, uint32_t word);
-_Noreturn void ppc_bad_access(uint32_t ea);
-_Noreturn void ppc_hle_missing(const char *name, uint32_t addr);
+PPC_NORETURN void ppc_unimpl(ppc_ctx *c, uint32_t addr, uint32_t word);
+PPC_NORETURN void ppc_bad_access(uint32_t ea);
+PPC_NORETURN void ppc_hle_missing(const char *name, uint32_t addr);
 uint64_t ppc_timebase(void);
 uint32_t ppc_mmio_read(uint32_t phys, int size);
 void ppc_mmio_write(uint32_t phys, uint32_t value, int size);
