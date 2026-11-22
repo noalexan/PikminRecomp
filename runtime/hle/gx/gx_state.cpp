@@ -1,5 +1,8 @@
 // GX state shims: scalars, floats, colours (by pointer), matrices (big-endian), lists, lighting, TEV.
+#include <cstdlib>
 #include <vector>
+
+#include "rt/log.hpp"
 
 #include "hle/gx/marshal.hpp"
 #include "rt/sched.hpp"
@@ -28,8 +31,8 @@ SHIM(GXSetCoPlanar, GXSetCoPlanar(GXBool(A(c, 0))))
 SHIM(GXSetColorUpdate, GXSetColorUpdate(GXBool(A(c, 0))))
 SHIM(GXSetCullMode, GXSetCullMode(GXCullMode(A(c, 0))))
 SHIM(GXSetCurrentMtx, GXSetCurrentMtx(A(c, 0)))
-SHIM(GXSetDispCopyDst, GXSetDispCopyDst(u16(A(c, 0)), u16(A(c, 1))))
-SHIM(GXSetDispCopySrc, GXSetDispCopySrc(u16(A(c, 0)), u16(A(c, 1)), u16(A(c, 2)), u16(A(c, 3))))
+SHIM(GXSetDispCopyDst, if (std::getenv("PIKMIN_GFX_TRACE")) rt::log_once("dcd", "GXSetDispCopyDst(%u,%u)", A(c,0),A(c,1)); GXSetDispCopyDst(u16(A(c, 0)), u16(A(c, 1))))
+SHIM(GXSetDispCopySrc, if (std::getenv("PIKMIN_GFX_TRACE")) rt::log_once("dcs", "GXSetDispCopySrc(%u,%u,%u,%u)", A(c,0),A(c,1),A(c,2),A(c,3)); GXSetDispCopySrc(u16(A(c, 0)), u16(A(c, 1)), u16(A(c, 2)), u16(A(c, 3))))
 SHIM(GXSetDither, GXSetDither(GXBool(A(c, 0))))
 SHIM(GXSetLineWidth, GXSetLineWidth(u8(A(c, 0)), GXTexOffset(A(c, 1))))
 SHIM(GXSetNumChans, GXSetNumChans(u8(A(c, 0))))
@@ -63,7 +66,7 @@ SHIM(GXSetZMode, GXSetZMode(GXBool(A(c, 0)), GXCompare(A(c, 1)), GXBool(A(c, 2))
 SHIM(GXSetVtxAttrFmt, GXSetVtxAttrFmt(GXVtxFmt(A(c, 0)), GXAttr(A(c, 1)), GXCompCnt(A(c, 2)), GXCompType(A(c, 3)), u8(A(c, 4))))
 SHIM(GXSetVtxDesc, GXSetVtxDesc(GXAttr(A(c, 0)), GXAttrType(A(c, 1))))
 SHIM(GXClearVtxDesc, GXClearVtxDesc())
-SHIM(GXInvalidateVtxCache, GXInvalidateVtxCache())
+SHIM(GXInvalidateVtxCache, ++rt::gx_counters().invalidate_vtx; GXInvalidateVtxCache())
 SHIM(GXInvalidateTexAll, GXInvalidateTexAll())
 SHIM(GXPixModeSync, GXPixModeSync())
 SHIM(GXFlush, GXFlush())

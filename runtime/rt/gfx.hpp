@@ -23,5 +23,8 @@ void gfx_present();
 void gfx_request_screenshot(uint32_t frame, std::string path);
 // Closes a GXBegin left open by guest code (real implementation in the GX shims).
 void gx_close_open_draw();
+// Per-frame counters for PIKMIN_GFX_STATS=1 diagnostics.
+struct GxCounters { uint32_t set_array = 0, invalidate_vtx = 0, begin = 0, call_dl = 0; };
+GxCounters& gx_counters();
 
 }  // namespace rt

@@ -1,6 +1,7 @@
 // GX geometry shims: draws (with inline vertex data from the write-gather pipe), vertex arrays,
 // display lists, textures and EFB copies. Guest addresses become host pointers into guest RAM;
 // aurora reads the big-endian GameCube data in place.
+#include <cstdlib>
 #include <unordered_map>
 
 #include "hle/gx/marshal.hpp"
@@ -35,18 +36,21 @@ extern "C" {
 
 void hle_GXBegin(ppc_ctx* c) {
     GX_SHIM(c, "GXBegin");
+    ++rt::gx_counters().begin;
     GXBegin(GXPrimitive(arg(c, 0)), GXVtxFmt(arg(c, 1)), u16(arg(c, 2)));
     g_draw_open = true;  // vertex data follows as write-gather-pipe stores (see rt/mmio.cpp)
 }
 
 void hle_GXSetArray(ppc_ctx* c) {
     GX_SHIM(c, "GXSetArray");
+    ++rt::gx_counters().set_array;
     // The SDK passes no size: 0 = unknown, inferred from each draw's indices (aurora patch 0001).
     GXSetArray(GXAttr(arg(c, 0)), host_ptr(c, arg(c, 1)), 0, u8(arg(c, 2)), false);
 }
 
 void hle_GXCallDisplayList(ppc_ctx* c) {
     GX_SHIM(c, "GXCallDisplayList");
+    ++rt::gx_counters().call_dl;
     GXCallDisplayList(host_ptr(c, arg(c, 0)), arg(c, 1));
 }
 
@@ -85,6 +89,8 @@ void hle_GXLoadTexObj(ppc_ctx* c) {
 
 void hle_GXCopyDisp(ppc_ctx* c) {
     GX_SHIM(c, "GXCopyDisp");
+    static int n = 0;
+    if (std::getenv("PIKMIN_GFX_TRACE") && n++ < 5) rt::log("gxtrace", "GXCopyDisp(%08x, %u)", arg(c, 0), arg(c, 1));
     GXCopyDisp(host_ptr(c, arg(c, 0)), GXBool(arg(c, 1)));
 }
 

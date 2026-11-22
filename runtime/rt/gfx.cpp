@@ -9,6 +9,7 @@
 #ifdef PIKMIN_GRAPHICS
 #include <aurora/aurora.h>
 #include <aurora/event.h>
+#include <aurora/gfx.h>
 #include <dolphin/gx.h>
 #include <dolphin/gx/GXAurora.h>
 #endif
@@ -16,6 +17,11 @@
 namespace rt {
 
 __attribute__((weak)) void gx_close_open_draw() {}
+
+GxCounters& gx_counters() {
+    static GxCounters c;
+    return c;
+}
 
 #ifndef PIKMIN_GRAPHICS
 bool gfx_init(const GfxOptions&) {
@@ -31,6 +37,8 @@ namespace {
 bool g_active = false;
 uint32_t g_presents = 0;
 bool g_init_failed = false;
+bool g_in_frame = false;
+uint32_t g_begin_failures = 0;
 
 struct Screenshot {
     uint32_t frame = 0;
@@ -90,7 +98,9 @@ bool gfx_init(const GfxOptions& opt) {
     cfg.logCallback = aurora_log;
     cfg.vsync = opt.vsync;
     cfg.startFullscreen = opt.fullscreen && !opt.headless_surface;
-    cfg.emulateXfb = true;
+    // aurora's XFB emulation presents black on a real window surface (offscreen it is never used);
+    // presenting the EFB at each retrace works. PIKMIN_XFB=1 re-enables it for investigation.
+    cfg.emulateXfb = std::getenv("PIKMIN_XFB") != nullptr;
     cfg.mem1Size = 0;
     cfg.mem2Size = 0;
     cfg.windowWidth = opt.width;
@@ -110,7 +120,7 @@ bool gfx_init(const GfxOptions& opt) {
     if (opt.guest_ram_end) AuroraSetUnknownArrayLimit(opt.guest_ram_end);
     g_active = true;
     aurora_update();
-    aurora_begin_frame();
+    g_in_frame = aurora_begin_frame();
     log("gfx", "graphics ready (%ux%u%s)", opt.width, opt.height, opt.headless_surface ? ", offscreen" : "");
     return true;
 }
@@ -132,14 +142,26 @@ void gfx_present() {
         g_shot.captured = AuroraReadbackCaptureColor(g_shot.stream, g_shot.key, &g_shot.w, &g_shot.h);
         if (!g_shot.captured) log("gfx", "screenshot capture rejected");
     }
-    aurora_end_frame();
+    if (g_in_frame) aurora_end_frame();
+    static const bool stats = std::getenv("PIKMIN_GFX_STATS") != nullptr;
+    if (stats) {
+        const AuroraStats* st = aurora_get_stats();
+        auto& k = gx_counters();
+        log("gfxstats", "frame %u: storage %u B, draws %u (merged %u), setArray %u, invalVtx %u, begin %u, callDL %u",
+            g_presents, st->lastStorageSize, st->drawCallCount, st->mergedDrawCallCount, k.set_array,
+            k.invalidate_vtx, k.begin, k.call_dl);
+        k = GxCounters{};
+    }
     for (const AuroraEvent* ev = aurora_update(); ev && ev->type != AURORA_NONE; ++ev) {
         if (ev->type == AURORA_EXIT) {
             log("gfx", "window closed");
             exit_process(0);
         }
     }
-    aurora_begin_frame();  // false while minimised: keep running, game time must not stall
+    g_in_frame = aurora_begin_frame();  // false while minimised/pending: keep running, game time must not stall
+    if (!g_in_frame && (++g_begin_failures == 1 || g_begin_failures % 500 == 0)) {
+        log("gfx", "aurora_begin_frame failed (%u times so far)", g_begin_failures);
+    }
     poll_screenshot();
 }
 
