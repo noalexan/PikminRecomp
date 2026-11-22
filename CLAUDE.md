@@ -114,18 +114,16 @@ python3 -m recomp --dol orig/GPIP01/sys/main.dol --map orig/GPIP01/files/dataDir
 - **Diagnostic env vars:** `PIKMIN_GFX_STATS=1` (per-frame aurora stats), `PIKMIN_GFX_TRACE=1` (display-copy calls), `PIKMIN_ARRAY_DEBUG=1` (large vertex-array uploads), `PIKMIN_TEST_LOG=1` (aurora info logs in GPU tests).
 - **Real-window output** can differ from offscreen output. Check it with `spectacle -b -n -a -o out.png` while the game runs.
 
-## Planned: installation and Steam
+## Installation and Steam
 
-Not implemented yet. To do after the audio and enhancements branches are merged:
-
-1. **CMake install rules** (`install(...)` in the top-level `CMakeLists.txt`):
-   - Install the `pikmin` binary to `${CMAKE_INSTALL_BINDIR}`.
-   - Generate and install a `pikminrecomp.desktop` file (configured from a template, e.g. `packaging/pikminrecomp.desktop.in`) to `${CMAKE_INSTALL_DATADIR}/applications`, plus an icon to `${CMAKE_INSTALL_DATADIR}/icons/hicolor/...`.
-   - The desktop entry runs `pikmin` with no arguments, so the disc path must come from `disc = "..."` in `~/.config/pikminrecomp/config.toml`. Write that key on install, or document it.
-   - Keep the install prefix configurable. A user-level install (e.g. `-DCMAKE_INSTALL_PREFIX=~/.local`) is the one exception to "never install into `$HOME`" that the user asked for; confirm the prefix with them.
-   - The icon must not use Nintendo artwork taken from the disc.
-2. **Install it:** `cmake --install build/cmake`.
-3. **Add it to Steam as a non-Steam game** pointing at the installed `pikmin`. Steam stores these in `~/.local/share/Steam/userdata/<id>/config/shortcuts.vdf` (binary VDF). Steam must be closed while editing, or use Steam's "Add a Non-Steam Game" dialog. Back up `shortcuts.vdf` first, and confirm with the user before touching their Steam config.
+- **Install rules** are in `runtime/gen.cmake`: the `pikmin` binary, `packaging/pikminrecomp.desktop.in` (configured with an absolute `Exec` path), and the original icon (`packaging/pikminrecomp.svg`, plus a 256 px PNG).
+- **Installed per user** to `~/.local`. This is the one user-approved exception to "nothing in `$HOME`".
+  ```sh
+  cmake -S . -B build/cmake -DCMAKE_INSTALL_PREFIX=$HOME/.local && cmake --build build/cmake && cmake --install build/cmake
+  ```
+  Re-run `cmake --install` after rebuilding: the installed binary is a copy.
+- **The launcher passes no arguments,** so the disc comes from `disc = "..."` in `~/.config/pikminrecomp/config.toml`.
+- **Steam:** a non-Steam shortcut "Pikmin Recomp" lives in `~/.local/share/Steam/userdata/476780297/config/shortcuts.vdf` (binary VDF; appid 3992718089). Edit it only while Steam is closed (check with `ps -eo comm`, not `pgrep -f`, which matches itself). Parse and append rather than overwrite if the file has other entries.
 
 ## Conventions
 

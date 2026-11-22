@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Pikmin Recomp
+GenericName=Native Pikmin (GameCube) recompilation
+Comment=Play your Pikmin disc natively (requires disc = "..." in ~/.config/pikminrecomp/config.toml)
+Exec=@CMAKE_INSTALL_FULL_BINDIR@/pikmin
+Icon=pikminrecomp
+Terminal=false
+Categories=Game;
+StartupWMClass=pikmin

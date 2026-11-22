@@ -50,3 +50,15 @@ add_executable(pikmin ${PROJECT_SOURCE_DIR}/runtime/main.cpp)
 target_compile_options(pikmin PRIVATE -O2 -Wall -Wextra)
 target_link_options(pikmin PRIVATE -rdynamic)  # readable f_<addr> frames in fatal backtraces
 target_link_libraries(pikmin PRIVATE "$<LINK_LIBRARY:WHOLE_ARCHIVE,pikmin_rt>" pikmin_gen pikmin_hle_stubs)
+
+# Installation: binary, desktop entry and icon (e.g. cmake --install build/cmake with
+# -DCMAKE_INSTALL_PREFIX=$HOME/.local). The desktop entry launches `pikmin` without arguments,
+# so the disc path comes from `disc = "..."` in ~/.config/pikminrecomp/config.toml.
+include(GNUInstallDirs)
+install(TARGETS pikmin RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+configure_file(${PROJECT_SOURCE_DIR}/packaging/pikminrecomp.desktop.in ${CMAKE_BINARY_DIR}/pikminrecomp.desktop @ONLY)
+install(FILES ${CMAKE_BINARY_DIR}/pikminrecomp.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+install(FILES ${PROJECT_SOURCE_DIR}/packaging/pikminrecomp.svg
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps)
+install(FILES ${PROJECT_SOURCE_DIR}/packaging/pikminrecomp-256.png
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/256x256/apps RENAME pikminrecomp.png)

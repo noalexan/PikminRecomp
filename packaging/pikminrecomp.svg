@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <!-- Original artwork: a sprout with a single leaf and bud (not derived from game assets). -->
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="40%" r="65%">
+      <stop offset="0" stop-color="#3b6b3a"/>
+      <stop offset="1" stop-color="#1c3320"/>
+    </radialGradient>
+  </defs>
+  <rect width="256" height="256" rx="48" fill="url(#bg)"/>
+  <path d="M128 222 C126 170 130 120 140 78" stroke="#d9e8b0" stroke-width="12" fill="none" stroke-linecap="round"/>
+  <path d="M140 80 C168 40 214 44 224 58 C200 92 164 98 140 80 Z" fill="#7cc04b" stroke="#4f8a2e" stroke-width="5"/>
+  <path d="M146 79 C172 66 196 62 214 60" stroke="#4f8a2e" stroke-width="4" fill="none" stroke-linecap="round"/>
+  <ellipse cx="128" cy="226" rx="44" ry="10" fill="#0f1f12" opacity="0.6"/>
+  <circle cx="98" cy="122" r="20" fill="#f4f1e4"/>
+  <circle cx="98" cy="122" r="8" fill="#e9c33a"/>
+</svg>
