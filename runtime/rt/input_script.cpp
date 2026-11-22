@@ -42,6 +42,10 @@ PadScriptParse parse_input_script(const std::string& text) {
             std::istringstream bs(buttons_s);
             std::string name;
             while (std::getline(bs, name, '+')) {
+                if (name == "SWARM") {
+                    e.swarm = true;
+                    continue;
+                }
                 auto it = button_names().find(name);
                 if (it == button_names().end()) {
                     out.error = "input script line " + std::to_string(lineno) + ": unknown button '" + name + "'";
@@ -54,6 +58,11 @@ PadScriptParse parse_input_script(const std::string& text) {
         if (ls >> sx >> sy) {
             e.stick_x = static_cast<int8_t>(sx);
             e.stick_y = static_cast<int8_t>(sy);
+            int cx = 0, cy = 0;
+            if (ls >> cx >> cy) {
+                e.substick_x = static_cast<int8_t>(cx);
+                e.substick_y = static_cast<int8_t>(cy);
+            }
         }
         out.entries.push_back(e);
     }

@@ -12,6 +12,7 @@
 #include <aurora/gfx.h>
 #include <dolphin/gx.h>
 #include <dolphin/gx/GXAurora.h>
+#include <SDL3/SDL_video.h>
 #endif
 
 namespace rt {
@@ -31,6 +32,8 @@ bool gfx_init(const GfxOptions&) {
     return false;
 }
 bool gfx_active() { return false; }
+bool gfx_output_size(uint32_t&, uint32_t&) { return false; }
+int gfx_display_refresh() { return 0; }
 void gfx_present() {}
 void gfx_pump_events() {}
 void gfx_request_screenshot(uint32_t, std::string) {}
@@ -38,6 +41,7 @@ void gfx_request_screenshot(uint32_t, std::string) {}
 
 namespace {
 bool g_active = false;
+bool g_offscreen = false;
 uint32_t g_presents = 0;
 bool g_init_failed = false;
 bool g_in_frame = false;
@@ -121,6 +125,10 @@ bool gfx_init(const GfxOptions& opt) {
         return false;
     }
     if (opt.guest_ram_end) AuroraSetUnknownArrayLimit(opt.guest_ram_end);
+    // Widescreen: the 640x480 logical frame is stretched over the whole window and the game's
+    // projections are widened (Hor+, see enhance/); 4:3 keeps the original image, pillarboxed.
+    AuroraSetViewportPolicy(opt.aspect_4_3 ? AURORA_VIEWPORT_FIT : AURORA_VIEWPORT_STRETCH);
+    g_offscreen = opt.headless_surface;
     g_active = true;
     aurora_update();
     g_in_frame = aurora_begin_frame();
@@ -129,6 +137,22 @@ bool gfx_init(const GfxOptions& opt) {
 }
 
 bool gfx_active() { return g_active; }
+
+bool gfx_output_size(uint32_t& w, uint32_t& h) {
+    if (!g_active) return false;
+    const AuroraWindowSize size = aurora_get_window_size();
+    w = size.native_fb_width ? size.native_fb_width : size.width;
+    h = size.native_fb_height ? size.native_fb_height : size.height;
+    return w && h;
+}
+
+int gfx_display_refresh() {
+    if (!g_active || g_offscreen) return 0;
+    SDL_Window* win = aurora_get_window();
+    SDL_DisplayID id = win ? SDL_GetDisplayForWindow(win) : SDL_GetPrimaryDisplay();
+    const SDL_DisplayMode* mode = id ? SDL_GetCurrentDisplayMode(id) : nullptr;
+    return mode && mode->refresh_rate > 0.f ? static_cast<int>(mode->refresh_rate + 0.5f) : 0;
+}
 
 void gfx_pump_events() {
     if (!g_active) return;

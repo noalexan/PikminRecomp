@@ -1,5 +1,7 @@
 #include "rt/clock.hpp"
 
+#include <time.h>
+
 #include <chrono>
 #include <map>
 #include <thread>
@@ -44,6 +46,14 @@ uint64_t Clock::ticks() {
     return base_ + static_cast<uint64_t>(ns) * kTicksPerSec / 1'000'000'000;
 }
 
+uint64_t Clock::coarse_ticks() {
+    if (mode_ == Mode::Fast) return ticks();
+    timespec ts;
+    clock_gettime(CLOCK_MONOTONIC_COARSE, &ts);
+    const int64_t ns = static_cast<int64_t>(ts.tv_sec) * 1'000'000'000 + ts.tv_nsec - host_ns0_;
+    return base_ + static_cast<uint64_t>(ns > 0 ? ns : 0) * kTicksPerSec / 1'000'000'000;
+}
+
 void Clock::advance_to(uint64_t t) {
     if (mode_ == Mode::Fast) {
         if (t > virt_) virt_ = t;
@@ -61,6 +71,12 @@ void schedule_at(uint64_t tick, std::function<void()> fn) { events().emplace(tic
 uint64_t next_event_tick() { return events().empty() ? UINT64_MAX : events().begin()->first; }
 
 void run_due_events() {
+    // Called at every safe point: skip the precise (possibly slow, e.g. HPET) clock read while the
+    // next event is certainly in the future. Fast mode keeps reading ticks() (that advances virtual time).
+    if (clock().mode() == Clock::Mode::Real &&
+        (events().empty() || clock().coarse_ticks() + Clock::kCoarseLag < events().begin()->first)) {
+        return;
+    }
     uint64_t now = clock().ticks();
     while (!events().empty() && events().begin()->first <= now) {
         auto fn = std::move(events().begin()->second);

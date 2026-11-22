@@ -12,6 +12,21 @@ std::string trim(const std::string& s) {
 }
 }  // namespace
 
+float parse_aspect(const std::string& v) {
+    if (v == "auto") return 0.f;
+    if (v == "4:3") return 4.f / 3.f;
+    return -1.f;
+}
+
+int parse_fps(const std::string& v) {
+    if (v == "auto") return 0;
+    if (v == "original") return -1;
+    char* end = nullptr;
+    long f = std::strtol(v.c_str(), &end, 10);
+    if (v.empty() || *end || f < 20 || f > 1000) return -2;
+    return static_cast<int>(f);
+}
+
 Config parse_config(const std::string& text) {
     Config cfg;
     std::istringstream in(text);
@@ -63,6 +78,25 @@ Config parse_config(const std::string& text) {
             } else {
                 warn(key + " must be an integer 320-16384");
             }
+        } else if (key == "aspect") {
+            std::string v = is_str ? value.substr(1, value.size() - 2) : value;
+            float a = parse_aspect(v);
+            if (a >= 0.f) cfg.aspect = a;
+            else warn("aspect must be \"auto\" or \"4:3\"");
+        } else if (key == "target_fps") {
+            std::string v = is_str ? value.substr(1, value.size() - 2) : value;
+            int f = parse_fps(v);
+            if (f >= -1) cfg.target_fps = f;
+            else warn("target_fps must be \"auto\", \"original\" or an integer 20-1000");
+        } else if (key == "hud_scale") {
+            char* end = nullptr;
+            float v = std::strtof(value.c_str(), &end);
+            if (!is_str && end && *end == '\0' && v >= 0.2f && v <= 1.5f) cfg.hud_scale = v;
+            else warn("hud_scale must be a number 0.2-1.5");
+        } else if (key == "camera") {
+            std::string v = is_str ? value.substr(1, value.size() - 2) : value;
+            if (v == "modern" || v == "original") cfg.modern_camera = v == "modern";
+            else warn("camera must be \"modern\" or \"original\"");
         } else {
             warn("unknown key '" + key + "' ignored");
         }

@@ -4,6 +4,7 @@
 
 #include "rt/log.hpp"
 
+#include "enhance/enhance.hpp"
 #include "hle/gx/marshal.hpp"
 #include "rt/sched.hpp"
 
@@ -40,7 +41,12 @@ SHIM(GXSetNumTevStages, GXSetNumTevStages(u8(A(c, 0))))
 SHIM(GXSetNumTexGens, GXSetNumTexGens(u8(A(c, 0))))
 SHIM(GXSetPixelFmt, GXSetPixelFmt(GXPixelFmt(A(c, 0)), GXZFmt16(A(c, 1))))
 SHIM(GXSetPointSize, GXSetPointSize(u8(A(c, 0)), GXTexOffset(A(c, 1))))
-SHIM(GXSetScissor, GXSetScissor(A(c, 0), A(c, 1), A(c, 2), A(c, 3)))
+extern "C" void hle_GXSetScissor(ppc_ctx* c) {
+    GX_SHIM(c, "GXSetScissor");
+    uint32_t x = A(c, 0), y = A(c, 1), w = A(c, 2), h = A(c, 3);
+    enh::on_set_scissor(x, y, w, h);  // 2D scissors follow the widescreen/HUD mapping
+    GXSetScissor(x, y, w, h);
+}
 SHIM(GXSetScissorBoxOffset, GXSetScissorBoxOffset(s32(A(c, 0)), s32(A(c, 1))))
 SHIM(GXSetTevAlphaIn, GXSetTevAlphaIn(GXTevStageID(A(c, 0)), GXTevAlphaArg(A(c, 1)), GXTevAlphaArg(A(c, 2)),
                                       GXTevAlphaArg(A(c, 3)), GXTevAlphaArg(A(c, 4))))
@@ -73,7 +79,8 @@ SHIM(GXFlush, GXFlush())
 SHIM(GXDrawDone, GXDrawDone())
 
 // ---- floats -------------------------------------------------------------------------------------
-SHIM(GXSetViewport, GXSetViewport(F(c, 0), F(c, 1), F(c, 2), F(c, 3), F(c, 4), F(c, 5)))
+SHIM(GXSetViewport, enh::on_set_viewport(F(c, 0), F(c, 1), F(c, 2), F(c, 3));
+     GXSetViewport(F(c, 0), F(c, 1), F(c, 2), F(c, 3), F(c, 4), F(c, 5)))
 SHIM(GXInitLightAttn, GXInitLightAttn(static_cast<GXLightObj*>(rt::gx::host_ptr(c, A(c, 0))), F(c, 0), F(c, 1), F(c, 2),
                                       F(c, 3), F(c, 4), F(c, 5)))
 SHIM(GXInitLightDir, GXInitLightDir(static_cast<GXLightObj*>(rt::gx::host_ptr(c, A(c, 0))), F(c, 0), F(c, 1), F(c, 2)))
@@ -123,6 +130,7 @@ extern "C" void hle_GXSetProjection(ppc_ctx* c) {
     GX_SHIM(c, "GXSetProjection");
     float m[16];
     rt::gx::floats_at(c, A(c, 0), m, 16);
+    enh::on_set_projection(m, A(c, 1));  // widescreen: 2D keeps 4:3 proportions / HUD anchoring
     GXSetProjection(m, GXProjectionType(A(c, 1)));
 }
 

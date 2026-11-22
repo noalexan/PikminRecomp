@@ -56,7 +56,7 @@ python3 -m recomp --dol orig/GPIP01/sys/main.dol --map orig/GPIP01/files/dataDir
    - Jump tables are resolved to `switch`es. Indirect calls go through `ppc_lookup(addr)`.
 4. `program.py` decides overrides from `recomp/overrides.toml`.
    - `[libraries] override` lists whole SDK libraries.
-   - `[functions]` lists per-function exceptions: `"override"`, `"translate"` or `"poll"` (translated, with safe points at entry and loop heads).
+   - `[functions]` lists per-function exceptions: `"override"`, `"translate"`, `"poll"` (translated, with safe points at entry and loop heads) or `"hook"` (translated as `f_<addr>_orig`; every call goes to host `hle_<name>`, which may call the original; used by `runtime/enhance/`).
    - Overridden functions become calls to `hle_<name>`, with **weak** abort stubs in `hle_stubs.c`.
    - Output: 64 shard files, a sorted function table and `report.txt`.
 - Generated code must be compiled with `-ffp-contract=off` (no FMA fusion) and `-fwrapv -fno-strict-aliasing`.
@@ -101,6 +101,15 @@ python3 -m recomp --dol orig/GPIP01/sys/main.dol --map orig/GPIP01/files/dataDir
   - `DVDReadPrio` blocks its thread for about 0.5 ms of guest time. JAudio's load callbacks depend on that ordering.
 - **Input:** `rt/pad_layout.cpp` sets the default keyboard and gamepad (DualShock 4) layouts. `hle/pad.cpp` converts aurora's `PADStatus` to the guest's 12-byte layout. `--input-script` drives port 0 deterministically for tests.
 
+### Enhancements: `runtime/enhance/`
+- Game functions are patched through `"hook"` entries in `overrides.toml`, never by editing generated code.
+- **Widescreen (Hor+):** 4:3 cameras get the window aspect, with the same vertical FOV, for both projection and frustum culling. 2D/ortho drawing is pillarboxed to 4:3, except full-screen fades, screen-copy effects and creature life gauges.
+- **HUD:** gameplay HUD clusters shrink toward the edge or corner they touch (`hud_scale`, default 0.5).
+- **Frame rate:** the game loop runs at the display refresh (240 fps with vsync). The frame time is scaled by 0.833 to match PAL gameplay speed (25 fps capped at 1/30 s). Cutscenes and camera smoothing are converted to original-frame units. The 50 Hz retrace still drives input scripts and screenshots.
+- **Camera:** right stick orbits and tilts (elevation 8–82°); L1 + right stick swarms; keyboard arrows = camera, Left Shift + arrows = swarm.
+- **Config / CLI:** `aspect` (`auto`|`4:3`), `target_fps` (`auto`|`original`|N), `hud_scale`, `camera` (`modern`|`original`); flags `--aspect --target-fps --hud-scale --camera`. `--headless` defaults to original timing. `PIKMIN_TIMING=1`, `PIKMIN_HUD_DUMP=1`.
+- **Clock:** safe points read `CLOCK_MONOTONIC_COARSE` and the precise clock only when an event is within 5 ms. This laptop's clock source is HPET, which made precise reads cap the loop at about 85 fps.
+
 ### aurora
 - Fetched at a pinned commit by `extern/aurora.cmake` and patched with `extern/aurora-patches/*.patch`.
   - The hash of the patches' contents is part of the FetchContent declaration, so editing a patch re-applies them on the next configure.
@@ -135,7 +144,7 @@ python3 -m recomp --dol orig/GPIP01/sys/main.dol --map orig/GPIP01/files/dataDir
 
 ## Planned: no ISO at runtime
 
-Not implemented yet; do it after the `enhancements` branch is merged (that branch also edits `runtime/main.cpp`). Goal: `pikmin` runs with no disc image. The ISO is needed only at build time.
+Not implemented yet; the `enhancements` branch it waited on is merged. Goal: `pikmin` runs with no disc image. The ISO is needed only at build time.
 
 1. **Bake `main.dol` into the binary.** `recomp/program.py` also emits the DOL's data sections, BSS range and entry point as C arrays (e.g. `gen/dol_data.c`). `rt::boot` copies those into guest RAM instead of reading the DOL from the disc. The text sections aren't needed, since code is already translated.
 2. **Directory-backed disc.** `rt::Disc` gets a second backend that serves the same FST paths, entry numbers and reads from a directory tree. Entry numbering must match the ISO's FST order, so generate an index file from the FST at extract/install time. The disc header (game ID, for BootInfo) and `DVDGetCurrentDiskID` come from that index.

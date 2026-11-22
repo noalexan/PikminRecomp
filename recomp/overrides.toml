@@ -26,3 +26,22 @@ Jac_PlayBgm = "poll"                                  # sequence load state
 Jac_PrepareDemoSound__FUl = "poll"                    # stream stop_ready
 Jac_StartDemoSound__FUl = "poll"                      # stream stop_ready / start
 Jac_StartDemo = "poll"                                # now_loading
+
+# Enhancements (runtime/enhance/): "hook" = translated as f_<addr>_orig, all calls go to the host
+# hle_<name>, which may call the original.
+"waitRetrace__11DGXGraphicsFv" = "hook"
+"updateSysClock__6SystemFv" = "hook"
+"update__11CullFrustumFffff" = "hook"
+"draw__9P2DScreenFiiPC14P2DGrafContext" = "hook"
+"draw__7P2DPaneFiiPC14P2DGrafContextb" = "hook"
+"draw__Q23zen12DrawGameInfoFR8Graphics" = "hook"
+"control__10PcamCameraFR10Controller" = "hook"
+"getCurrentAngle__10PcamCameraFv" = "hook"
+"getCurrentHomingSpeed__10PcamCameraFv" = "hook"
+"makePosture__10PcamCameraFv" = "hook"
+"postrefresh__6MapMgrFR8Graphics" = "hook"
+"grabBuffer__7TextureFiibb" = "hook"
+"fillRectangle__11DGXGraphicsFR8RectArea" = "hook"
+"drawRectangle__11DGXGraphicsFR8RectAreaR8RectAreaP8Vector3f" = "hook"
+"projectWorldPoint__6CameraFR8GraphicsR8Vector3f" = "hook"
+"update__15CinematicPlayerFv" = "hook"

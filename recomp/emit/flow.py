@@ -60,8 +60,8 @@ def _transfer(i: Insn, st: FnState, target: int, link: bool) -> str:
         lr = f"c->lr = 0x{i.addr + 4:08x}u; "
         if target == i.addr + 4:  # `bl next; mflr rX` reads the PC
             return f"{lr}goto L_{target:08x};"
-        if target == st.start:  # self-recursion: a real call, its blr returns here
-            return f"{lr}{st.name}(c);"
+        if target == st.start:  # self-recursion: a real call, its blr returns here (through a hook if any)
+            return f"{lr}{st.ctx.call_target(target) or st.name}(c);"
         return f"{lr}{_foreign(i, st, target)}(c);"
     if st.contains(target):
         return f"goto L_{target:08x};"
