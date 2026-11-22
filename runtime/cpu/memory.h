@@ -12,6 +12,9 @@
 /* Host pointer for an n-byte access, or NULL when the access is MMIO. */
 static inline uint8_t *ppc_route(ppc_ctx *c, uint32_t ea, uint32_t n) {
     if (PPC_UNLIKELY(ea - PPC_LC_BASE < PPC_LC_SIZE)) {
+        if (ea - PPC_LC_BASE > PPC_LC_SIZE - n) {
+            ppc_bad_access(ea); /* straddles the end of the locked cache */
+        }
         return c->lc + (ea - PPC_LC_BASE);
     }
     uint32_t phys = ea & 0x1FFFFFFFu;

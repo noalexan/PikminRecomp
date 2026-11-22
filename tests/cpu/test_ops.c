@@ -1,4 +1,5 @@
 #include <math.h>
+#include <setjmp.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -27,14 +28,21 @@ void ppc_mmio_write(uint32_t phys, uint32_t value, int size) {
     mmio_last_size = size;
 }
 uint32_t ppc_mmio_read(uint32_t phys, int size) { (void)phys; (void)size; return 0; }
-void ppc_bad_access(uint32_t ea) { fprintf(stderr, "bad access %08x\n", ea); exit(2); }
+static jmp_buf bad_jmp;
+static int expect_bad;
+void ppc_bad_access(uint32_t ea) {
+    if (expect_bad) longjmp(bad_jmp, 1);
+    fprintf(stderr, "bad access %08x\n", ea);
+    exit(2);
+}
 void ppc_unimpl(ppc_ctx *c, uint32_t addr, uint32_t word) { (void)c; (void)addr; (void)word; exit(2); }
 uint64_t ppc_timebase(void) { return 0; }
 ppc_fn ppc_lookup(uint32_t addr) { (void)addr; return NULL; }
 
 int main(void) {
     static uint8_t ram[PPC_RAM_SIZE];
-    static uint8_t lc[PPC_LC_SIZE];
+    static uint8_t lcbuf[PPC_LC_SIZE + 16]; /* guard bytes after the locked cache */
+    uint8_t *lc = lcbuf;
     ppc_ctx ctx;
     memset(&ctx, 0, sizeof ctx);
     ppc_ctx *c = &ctx;
@@ -69,6 +77,19 @@ int main(void) {
     mem_w32(c, 0xE0000010u, 7);
     CHECK(lc[0x13] == 7);
     CHECK(ram[0x13] == 0);
+
+    /* access straddling the end of the locked cache: bad access, no overflow, no RAM alias */
+    expect_bad = 1;
+    int faulted = 0;
+    if (setjmp(bad_jmp) == 0) {
+        mem_w32(c, PPC_LC_BASE + PPC_LC_SIZE - 2, 0xAABBCCDDu);
+    } else {
+        faulted = 1;
+    }
+    expect_bad = 0;
+    CHECK(faulted);
+    CHECK(lcbuf[PPC_LC_SIZE] == 0 && lcbuf[PPC_LC_SIZE + 1] == 0);
+    CHECK(ram[PPC_LC_SIZE - 2] == 0);
 
     /* paired-single quantization */
     c->gqr[0] = (4u << 16) | (0u << 24); /* load u8, scale 0 */
