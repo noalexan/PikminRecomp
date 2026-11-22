@@ -59,19 +59,23 @@ std::string state_dir() {
     return dir;
 }
 
-std::vector<uint8_t> read_dol(const rt::Disc& disc) {
-    auto be32 = [](const uint8_t* p) { return uint32_t(p[0]) << 24 | p[1] << 16 | p[2] << 8 | p[3]; };
-    uint32_t dol_off = be32(disc.header() + 0x420);
-    std::vector<uint8_t> hdr(0x100);
-    disc.read(dol_off, hdr);
-    uint32_t end = 0x100;
-    for (int i = 0; i < 18; ++i) {
-        uint32_t off = be32(&hdr[i * 4]), size = be32(&hdr[0x90 + i * 4]);
-        if (size) end = std::max(end, off + size);
+extern "C" const uint8_t pikmin_dol_start[], pikmin_dol_end[];  // dol_blob.S
+
+// Game data when neither --disc nor config names one: installed tree, then the source checkout.
+std::string default_data_dir() {
+    char exe[4096];
+    ssize_t n = readlink("/proc/self/exe", exe, sizeof exe - 1);
+    std::vector<std::string> candidates;
+    if (n > 0) {
+        std::string e(exe, static_cast<size_t>(n));
+        candidates.push_back(e.substr(0, e.rfind('/')) + "/" PIKMIN_DATA_REL);
     }
-    std::vector<uint8_t> dol(end);
-    disc.read(dol_off, dol);
-    return dol;
+    candidates.push_back(PIKMIN_SOURCE_DATA);
+    for (auto& d : candidates) {
+        struct stat st{};
+        if (stat((d + "/sys/fst.bin").c_str(), &st) == 0) return d;
+    }
+    return {};
 }
 
 pthread_t g_game_thread;
@@ -163,8 +167,9 @@ int main(int argc, char** argv) {
     rt::Config cfg = rt::load_config(config_path);
     for (auto& w : cfg.warnings) rt::log("config", "%s", w.c_str());
     std::string disc_path = disc_arg.empty() ? cfg.disc : disc_arg;
+    if (disc_path.empty()) disc_path = default_data_dir();
     if (disc_path.empty()) {
-        fail("no disc image: pass --disc PATH or set disc = \"...\" in " + config_path);
+        fail("no game data: install it (cmake --install), pass --disc PATH or set disc = \"...\" in " + config_path);
     }
     const bool headless = headless_flag || (cfg.headless && !offscreen);
 
@@ -195,7 +200,7 @@ int main(int argc, char** argv) {
     } catch (const rt::DiscError& e) {
         fail(e.what());
     }
-    std::vector<uint8_t> dol = read_dol(*disc);
+    std::span<const uint8_t> dol(pikmin_dol_start, static_cast<size_t>(pikmin_dol_end - pikmin_dol_start));
 
     static std::vector<uint8_t> ram(PPC_RAM_SIZE), lc(PPC_LC_SIZE);
     if (!headless) {

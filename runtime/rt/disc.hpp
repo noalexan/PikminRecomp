@@ -1,4 +1,6 @@
-// Read-only access to a plain GameCube disc image (ISO/GCM): header, FST lookups, reads.
+// Read-only access to the game disc: header, FST lookups, reads by disc offset.
+// Two backends: a plain disc image (ISO/GCM), or an extracted tree (sys/boot.bin, sys/fst.bin,
+// sys/paths.txt, files/...) as written by tools/extract_gcm.py and installed by cmake --install.
 #pragma once
 #include <cstdint>
 #include <memory>
@@ -25,6 +27,7 @@ class Disc {
 public:
     static constexpr const char* kGameId = "GPIP01";
 
+    // An image file or an extracted directory.
     static Disc open(const std::string& path);
     Disc(Disc&&) noexcept;
     Disc& operator=(Disc&&) noexcept;
@@ -38,8 +41,15 @@ public:
     size_t read(uint64_t offset, std::span<uint8_t> out) const;
 
 private:
+    struct Span {  // directory backend: one file's range on the original disc
+        uint64_t offset, length;
+        std::string path;  // absolute host path
+    };
     Disc() = default;
+    static Disc open_dir(const std::string& dir);
+    void parse_fst(const std::string& where, const std::vector<uint8_t>& fst, uint64_t image_size);
     int fd_ = -1;
+    std::vector<Span> spans_;  // directory backend, sorted by offset
     std::vector<uint8_t> header_;
     std::vector<FileRef> entries_;
     std::unordered_map<std::string, int> paths_;  // normalised lowercase path -> entry

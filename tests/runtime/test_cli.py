@@ -15,11 +15,14 @@ def run(args, tmp_path, **kw):
     return subprocess.run([PIKMIN, *args], capture_output=True, text=True, env=env, timeout=60, **kw)
 
 
-def test_no_disc_explains_both_options(tmp_path):
-    r = run(["--headless"], tmp_path)
-    assert r.returncode == 2
-    assert "--disc" in r.stderr and "config.toml" in r.stderr
-    assert len(r.stderr.strip().splitlines()) == 1
+def test_runs_without_a_disc_image(tmp_path):
+    # No --disc and no config: the extracted tree (installed, or orig/ in the checkout) is used,
+    # and main.dol comes from the binary itself.
+    if not (ROOT / "orig/GPIP01/sys/paths.txt").exists():
+        pytest.skip("extracted game data not available")
+    r = run(["--headless", "--fast", "--frames", "60"], tmp_path)
+    assert r.returncode == 0, r.stderr
+    assert "orig/GPIP01" in r.stderr
 
 
 def test_non_gamecube_file_is_one_line_error(tmp_path):

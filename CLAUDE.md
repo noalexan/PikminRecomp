@@ -15,7 +15,7 @@ A static recompilation of the GameCube game **Pikmin (PAL, game ID GPIP01)** int
 ## Commands
 
 ```sh
-# One-time: extract the disc (gives orig/GPIP01/sys/main.dol and orig/GPIP01/files/dataDir/build.map)
+# One-time: extract the disc (gives orig/GPIP01/sys/main.dol, sys/paths.txt and files/dataDir/build.map)
 python3 tools/extract_gcm.py ~/Downloads/GPIP01/game.iso orig/GPIP01
 
 # Configure and build (the first configure fetches aurora + Dawn into build/cmake/_deps;
@@ -30,7 +30,7 @@ ctest --test-dir build/cmake --output-on-failure   # C/C++ suites (runtime units
 ctest --test-dir build/cmake -R test_sched         # a single C/C++ suite
 
 # Run the game (fullscreen by default; config in ~/.config/pikminrecomp/config.toml)
-build/cmake/pikmin --disc ~/Downloads/GPIP01/game.iso
+build/cmake/pikmin                                  # data from orig/GPIP01; --disc ISO|DIR overrides
 build/cmake/pikmin --disc ISO --headless --fast --frames 600            # no GPU, virtual clock
 build/cmake/pikmin --disc ISO --offscreen --fast --frames 750 \
     --input-script script.txt --screenshot 700:build/shot.ppm          # real GPU, no window
@@ -139,18 +139,15 @@ python3 -m recomp --dol orig/GPIP01/sys/main.dol --map orig/GPIP01/files/dataDir
   cmake -S . -B build/cmake -DCMAKE_INSTALL_PREFIX=$HOME/.local && cmake --build build/cmake && cmake --install build/cmake
   ```
   Re-run `cmake --install` after rebuilding: the installed binary is a copy.
-- **The launcher passes no arguments,** so the disc comes from `disc = "..."` in `~/.config/pikminrecomp/config.toml`.
+- **The launcher passes no arguments;** the game data comes from the installed tree (see below).
 - **Steam:** a non-Steam shortcut "Pikmin Recomp" lives in `~/.local/share/Steam/userdata/476780297/config/shortcuts.vdf` (binary VDF; appid 3992718089). Edit it only while Steam is closed (check with `ps -eo comm`, not `pgrep -f`, which matches itself). Parse and append rather than overwrite if the file has other entries.
 
-## Planned: no ISO at runtime
+## Game data: no ISO at runtime
 
-Not implemented yet; the `enhancements` branch it waited on is merged. Goal: `pikmin` runs with no disc image. The ISO is needed only at build time.
-
-1. **Bake `main.dol` into the binary.** `recomp/program.py` also emits the DOL's data sections, BSS range and entry point as C arrays (e.g. `gen/dol_data.c`). `rt::boot` copies those into guest RAM instead of reading the DOL from the disc. The text sections aren't needed, since code is already translated.
-2. **Directory-backed disc.** `rt::Disc` gets a second backend that serves the same FST paths, entry numbers and reads from a directory tree. Entry numbering must match the ISO's FST order, so generate an index file from the FST at extract/install time. The disc header (game ID, for BootInfo) and `DVDGetCurrentDiskID` come from that index.
-3. **Install the assets.** `cmake --install` copies `orig/GPIP01/files` (about 650 MB) and the index to `${CMAKE_INSTALL_DATADIR}/pikminrecomp/data`.
-4. **Data lookup order:** `--disc PATH` (ISO or data directory), then `disc = "..."` in config, then the installed data directory. With installed data, the desktop entry and the Steam shortcut need no config.
-5. **Licensing:** the installed data and the binary contain Nintendo data. They stay out of git and must never be distributed.
+- **`main.dol` is baked into the binary.** `runtime/gen.cmake` writes `dol_blob.S`, which `.incbin`s `orig/GPIP01/sys/main.dol` (text included, so `rt::load_dol` is unchanged). `main.cpp` boots from `pikmin_dol_start/end`.
+- **`rt::Disc` has two backends:** an ISO/GCM image, or an extracted tree (`sys/boot.bin`, `sys/fst.bin`, `sys/paths.txt`, `files/...`). The tree reuses the disc's FST for entry numbers and offsets. `sys/paths.txt` (line i = `files/`-relative path of entry i, from `tools/fst_paths.py`; `extract_gcm.py` writes it) handles the Shift-JIS file names. Reads outside files return zeros.
+- **Lookup order:** `--disc PATH` (image or tree), then `disc = "..."` in config, then `<bindir>/../share/pikminrecomp/data` (installed), then `orig/GPIP01` in the checkout. So `build/cmake/pikmin` and the installed `pikmin` both run with no arguments.
+- **`cmake --install`** copies the tree (about 655 MB) to `${CMAKE_INSTALL_DATADIR}/pikminrecomp/data`. The binary and the data are Nintendo's: keep them out of git and never distribute them.
 
 ## Conventions
 

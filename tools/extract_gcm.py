@@ -2,10 +2,11 @@
 """Extract a GameCube disc image (GCM/ISO) into sys/ and files/.
 
 Layout matches Dolphin's "Extract Entire Disc":
-  sys/boot.bin, sys/bi2.bin, sys/apploader.img, sys/main.dol, sys/fst.bin
+  sys/boot.bin, sys/bi2.bin, sys/apploader.img, sys/main.dol, sys/fst.bin, sys/paths.txt
   files/<filesystem tree>
 """
 import argparse
+import os
 import struct
 import sys
 from pathlib import Path
@@ -89,6 +90,11 @@ def main():
             else:
                 path.write_bytes(read(w1, w2))
                 nfiles += 1
+
+    # Path index for the runtime's directory-backed disc (see tools/fst_paths.py).
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from fst_paths import fst_paths
+    (sysdir / "paths.txt").write_text("\n".join(fst_paths(fst)) + "\n", encoding="utf-8")
 
     print(f"{game_id}: main.dol {dol_size(dol_hdr):#x} bytes, {nfiles} files -> {args.out}")
 
