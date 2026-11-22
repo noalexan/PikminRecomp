@@ -8,3 +8,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 enable_testing()
 add_subdirectory(tests/cpu)
+
+if(EXISTS ${PROJECT_SOURCE_DIR}/orig/GPIP01/sys/main.dol)
+    include(runtime/gen.cmake)
+    add_subdirectory(tests/game)
+else()
+    message(STATUS "orig/GPIP01 not extracted: skipping recompiled game targets")
+endif()

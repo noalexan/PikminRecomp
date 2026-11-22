@@ -40,7 +40,7 @@ def _cond(bo: int, bi: int, allow_ctr: bool = True) -> tuple[str, str]:
 
 def _guard(pre: str, cond: str, action: str) -> str:
     if cond == "1":
-        return f"{pre} {action}".strip()
+        return f"{pre} {{ {action} }}".strip()
     return f"{pre} if ({cond}) {{ {action} }}".strip()
 
 

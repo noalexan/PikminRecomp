@@ -1,0 +1,12 @@
+# Guest code NOT translated: calls go to host `hle_*` implementations instead.
+
+[libraries]
+# Nintendo SDK + debugger/hardware libraries (see design doc, "3. SDK replacement").
+override = [
+    "gx.a", "vi.a", "pad.a", "si.a", "dvd.a", "card.a", "os.a", "ar.a", "exi.a", "ai.a",
+    "dsp.a", "db.a", "hio.a", "base.a", "amcExi2.a", "amcnotstub.a", "OdemuExi2.a",
+    "odenotstub.a", "TRK_MINNOW_DOLPHIN.a",
+]
+
+[functions]
+# Per-function exceptions: guest symbol = "override" | "translate"

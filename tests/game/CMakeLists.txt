@@ -1,0 +1,4 @@
+add_executable(test_real_functions test_real_functions.c)
+target_link_libraries(test_real_functions PRIVATE pikmin_gen pikmin_stubs)
+add_test(NAME test_real_functions COMMAND test_real_functions ${PIKMIN_DOL})
+set_tests_properties(test_real_functions PROPERTIES SKIP_RETURN_CODE 77)

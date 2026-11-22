@@ -144,3 +144,8 @@ def test_long_lis_distance():
            "li 5,10\nblr\nli 5,11\nblr")
     s = run_case(asm, {"r3": 1}, {table: blob}, data={table: blob}, tables={table: 2})
     assert s.r[5] == 11
+
+
+def test_two_blrl_in_one_function():
+    s = run_case("blrl\nmtlr 4\nblrl", {"lr": 0x80123456, "r4": 0x80123456})
+    assert s.r[3] == 0x42
