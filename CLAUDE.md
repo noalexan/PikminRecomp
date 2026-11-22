@@ -56,7 +56,7 @@ python3 -m recomp --dol orig/GPIP01/sys/main.dol --map orig/GPIP01/files/dataDir
    - Jump tables are resolved to `switch`es. Indirect calls go through `ppc_lookup(addr)`.
 4. `program.py` decides overrides from `recomp/overrides.toml`.
    - `[libraries] override` lists whole SDK libraries.
-   - `[functions]` lists per-function exceptions. JAudio entry points live here while audio is stubbed.
+   - `[functions]` lists per-function exceptions: `"override"`, `"translate"` or `"poll"` (translated, with safe points at entry and loop heads).
    - Overridden functions become calls to `hle_<name>`, with **weak** abort stubs in `hle_stubs.c`.
    - Output: 64 shard files, a sorted function table and `report.txt`.
 - Generated code must be compiled with `-ffp-contract=off` (no FMA fusion) and `-fwrapv -fno-strict-aliasing`.
@@ -75,7 +75,9 @@ python3 -m recomp --dol orig/GPIP01/sys/main.dol --map orig/GPIP01/files/dataDir
 - **Interrupts:** guest "interrupts" (DVD/ARQ completion, retrace and alarm callbacks) are queued and delivered at **safe points** (`rt/irq.cpp`).
   - Every HLE function starts with `HLE_ENTRY(c, "Name")`, which is a safe point.
   - Callbacks run on a separate context with interrupts disabled. Interrupt-enable state is per thread.
-  - Guest busy-wait loops with no OS call can't receive callbacks. Fix those by completing the awaited event sooner (as `ARQPostRequest` does), never by patching game code.
+  - Guest busy-wait loops with no OS call can't receive callbacks. Fix those without changing what game code computes, in one of two ways:
+    - complete the awaited event sooner (as `ARQPostRequest` does), or
+    - mark the function `"poll"` in `overrides.toml`, which keeps it translated but makes its entry and loop heads scheduling points (`ppc_poll`), the chance an interrupt would get on hardware. JAudio uses this for 13 functions.
 - **Time:** `rt/clock.cpp` provides the 40.5 MHz timebase. Real mode follows the host clock; `--fast` mode is a virtual clock that jumps to the next event when all threads sleep.
 - **HLE conventions:**
   - Arguments come from `rt::arg(c, i)` (r3…) and `rt::farg` (f1…); return with `rt::ret`.
@@ -91,6 +93,12 @@ python3 -m recomp --dol orig/GPIP01/sys/main.dol --map orig/GPIP01/files/dataDir
   - Frames are presented at **`GXCopyDisp`**, not at retrace. Presenting at retrace shows half-drawn frames.
   - aurora's `emulateXfb` is **off**, because it presents black on real windows; offscreen tests never exercise that path. `PIKMIN_XFB=1` re-enables it.
   - aurora's PC `GXTexObj` is 64 bytes against the GameCube's 32, so texture objects use host-side shadows keyed by guest address.
+- **Audio:** JAudio runs as translated code.
+  - `hle/dsp.cpp` emulates the DSP mailbox and raises JAudio's own `__DSPHandler` as an interrupt.
+  - `hle/dsp/zelda.*` is a port of Dolphin's `UCode_Zelda`, which does the mixing, ADPCM decoding from ARAM and reverb. **This makes the project GPL-2.0-or-later** (see `NOTICE`).
+  - `hle/ai.cpp` runs AI DMA as 32029 Hz clock events.
+  - `rt/audio_out.cpp` streams to SDL3, only in real-time non-headless runs; config `audio = false` turns it off.
+  - `DVDReadPrio` blocks its thread for about 0.5 ms of guest time. JAudio's load callbacks depend on that ordering.
 - **Input:** `rt/pad_layout.cpp` sets the default keyboard and gamepad (DualShock 4) layouts. `hle/pad.cpp` converts aurora's `PADStatus` to the guest's 12-byte layout. `--input-script` drives port 0 deterministically for tests.
 
 ### aurora
@@ -111,7 +119,7 @@ python3 -m recomp --dol orig/GPIP01/sys/main.dol --map orig/GPIP01/files/dataDir
   - Input script lines are `FRAME BUTTONS [STICKX STICKY]`, e.g. `300 START`, `303 -`, `660 - 0 127`.
   - Menus follow the analog stick, not the D-pad.
   - Screenshots are keyed to the retrace count.
-- **Diagnostic env vars:** `PIKMIN_GFX_STATS=1` (per-frame aurora stats), `PIKMIN_GFX_TRACE=1` (display-copy calls), `PIKMIN_ARRAY_DEBUG=1` (large vertex-array uploads), `PIKMIN_TEST_LOG=1` (aurora info logs in GPU tests).
+- **Diagnostic env vars:** `PIKMIN_GFX_STATS=1` (per-frame aurora stats), `PIKMIN_GFX_TRACE=1` (display-copy calls), `PIKMIN_ARRAY_DEBUG=1` (large vertex-array uploads), `PIKMIN_TEST_LOG=1` (aurora info logs in GPU tests), `PIKMIN_AUDIO_DUMP=out.wav` (mixed audio in any mode), `PIKMIN_AUDIO_DEBUG=1`, `PIKMIN_POLL_TRACE=1`.
 - **Real-window output** can differ from offscreen output. Check it with `spectacle -b -n -a -o out.png` while the game runs.
 
 ## Installation and Steam
