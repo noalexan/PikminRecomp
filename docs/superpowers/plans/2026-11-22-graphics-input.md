@@ -193,12 +193,18 @@
     - Control stick: W/A/S/D. C-stick (Pikmin swarming): arrow keys.
     - A: J; B: K; X: L; Y: I; Z: U; L: Q; R: E; Start: Enter.
     - D-pad: T/G/F/H (up/down/left/right).
-  - Controllers use aurora's defaults (SDL gamepad, GC adapter).
+  - **Default controller layout** (`aurora::pad::set_default_controller_bindings`, SDL gamepad terms), the same for a DualShock 4, which the user owns, and any other SDL gamepad:
+    - South (DS4 Cross) = A; West (Square) = B; East (Circle) = X; North (Triangle) = Y.
+    - Right shoulder (R1) = Z; left / right trigger (L2 / R2, analog) = L / R.
+    - Start (Options) = Start; D-pad = D-pad.
+    - Left stick = control stick; right stick = C-stick.
+  - A GameCube controller adapter keeps aurora's native mapping.
   - **Scripted input**, `--input-script PATH`. Lines have the form `FRAME BUTTONS [STICKX STICKY]`, where BUTTONS is `+`-joined names from {A, B, X, Y, Z, L, R, START, UP, DOWN, LEFT, RIGHT} or `-` for none. From that retrace on, port 0 reports exactly that state, overriding aurora (so tests are deterministic). Buttons use the SDK masks: LEFT 0x0001, RIGHT 0x0002, DOWN 0x0004, UP 0x0008, Z 0x0010, R 0x0020, L 0x0040, A 0x0100, B 0x0200, X 0x0400, Y 0x0800, START 0x1000.
 - [ ] **Step 1: Write failing tests** in `test_pad.cpp`:
   - The script parser handles `10 A+START`, `20 - 0 -127` and comments, and rejects an unknown button with a message naming it.
   - With the script active at frame ≥ 10, `PADRead` writes guest port 0 with button 0x1100 (big-endian) and err 0.
   - The guest layout conversion of a synthetic host `PADStatus` (with `extButton` set) produces the 12-byte guest record exactly.
+  - `test_default_controller_layout`: the bindings passed to aurora map SDL `GAMEPAD_BUTTON_SOUTH` to A, `WEST` to B, `EAST` to X, `NORTH` to Y, `RIGHT_SHOULDER` to Z, the triggers to L / R and `START` to Start (checked through `aurora::pad::bindings_for_control`).
 - [ ] **Step 2: Run** `ctest --test-dir build/cmake -R test_pad --output-on-failure`. Expected: FAIL.
 - [ ] **Step 3: Implement**.
 - [ ] **Step 4: Run** the test. Expected: PASS.
@@ -225,5 +231,5 @@
 
   Look at the screenshots after each iteration. Rendering that is wrong but non-blank (colours, missing layers, upside down) counts as a failure only if it is clearly wrong against the original game, which the user can confirm in Step 5.
 - [ ] **Step 4: Run** the gate and the full suite: `pytest -q && cmake --build build/cmake && ctest --test-dir build/cmake --output-on-failure`. Expected: all pass.
-- [ ] **Step 5: Manual check with the user.** They run `build/cmake/pikmin --disc ~/Downloads/GPIP01/game.iso` in a window on the RTX 5070, look at the title screen, and press Enter. Record their observations in `graphics-bringup.md`.
+- [ ] **Step 5: Manual check with the user.** They run `build/cmake/pikmin --disc ~/Downloads/GPIP01/game.iso` in a window on the RTX 5070, look at the title screen, and press Enter, then Options on the DualShock 4. Record their observations in `graphics-bringup.md`.
 - [ ] **Step 6: Commit** `test(gfx): title screen renders and responds to input`.
