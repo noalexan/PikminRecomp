@@ -7,3 +7,4 @@ function(pikmin_rt_test name)
 endfunction()
 
 pikmin_rt_test(test_guest)
+pikmin_rt_test(test_format)
