@@ -2,6 +2,7 @@
 #ifndef PPC_OPS_H
 #define PPC_OPS_H
 
+#include <fenv.h>
 #include <math.h>
 #include <string.h>
 
@@ -87,6 +88,12 @@ static inline uint32_t ppc_fctiw(double x, int round_toward_zero) {
         return 0x80000000u;
     }
     return (uint32_t)(int32_t)r;
+}
+
+/* Apply FPSCR[RN] to the host rounding mode after an FPSCR write. */
+static inline void ppc_fpscr_changed(ppc_ctx *c) {
+    static const int modes[4] = {FE_TONEAREST, FE_TOWARDZERO, FE_UPWARD, FE_DOWNWARD};
+    fesetround(modes[c->fpscr & 3]);
 }
 
 static inline uint64_t ppc_dbits(double d) {
