@@ -133,6 +133,16 @@ python3 -m recomp --dol orig/GPIP01/sys/main.dol --map orig/GPIP01/files/dataDir
 - **The launcher passes no arguments,** so the disc comes from `disc = "..."` in `~/.config/pikminrecomp/config.toml`.
 - **Steam:** a non-Steam shortcut "Pikmin Recomp" lives in `~/.local/share/Steam/userdata/476780297/config/shortcuts.vdf` (binary VDF; appid 3992718089). Edit it only while Steam is closed (check with `ps -eo comm`, not `pgrep -f`, which matches itself). Parse and append rather than overwrite if the file has other entries.
 
+## Planned: no ISO at runtime
+
+Not implemented yet; do it after the `enhancements` branch is merged (that branch also edits `runtime/main.cpp`). Goal: `pikmin` runs with no disc image. The ISO is needed only at build time.
+
+1. **Bake `main.dol` into the binary.** `recomp/program.py` also emits the DOL's data sections, BSS range and entry point as C arrays (e.g. `gen/dol_data.c`). `rt::boot` copies those into guest RAM instead of reading the DOL from the disc. The text sections aren't needed, since code is already translated.
+2. **Directory-backed disc.** `rt::Disc` gets a second backend that serves the same FST paths, entry numbers and reads from a directory tree. Entry numbering must match the ISO's FST order, so generate an index file from the FST at extract/install time. The disc header (game ID, for BootInfo) and `DVDGetCurrentDiskID` come from that index.
+3. **Install the assets.** `cmake --install` copies `orig/GPIP01/files` (about 650 MB) and the index to `${CMAKE_INSTALL_DATADIR}/pikminrecomp/data`.
+4. **Data lookup order:** `--disc PATH` (ISO or data directory), then `disc = "..."` in config, then the installed data directory. With installed data, the desktop entry and the Steam shortcut need no config.
+5. **Licensing:** the installed data and the binary contain Nintendo data. They stay out of git and must never be distributed.
+
 ## Conventions
 
 - Install system dependencies with `dnf`. Anything else is project-local (`build/`) or root-owned in `/opt` (Ghidra). Never install into `$HOME`.
