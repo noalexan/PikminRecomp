@@ -8,3 +8,4 @@ endfunction()
 
 pikmin_rt_test(test_guest)
 pikmin_rt_test(test_format)
+pikmin_rt_test(test_sched)
