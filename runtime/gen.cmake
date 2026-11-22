@@ -40,3 +40,12 @@ target_link_libraries(pikmin_stubs PUBLIC pikmin_gen)
 
 add_executable(pikmin_link_check ${PROJECT_SOURCE_DIR}/runtime/link_check.c)
 target_link_libraries(pikmin_link_check PRIVATE pikmin_gen pikmin_stubs)
+
+# The game: generated code + runtime. pikmin_rt is linked whole so its strong hle_* definitions
+# always replace the weak generated stubs (a static archive would otherwise satisfy them with the
+# first weak definition it finds).
+add_library(pikmin_hle_stubs STATIC ${GEN_DIR}/hle_stubs.c)
+target_link_libraries(pikmin_hle_stubs PUBLIC pikmin_gen)
+add_executable(pikmin ${PROJECT_SOURCE_DIR}/runtime/main.cpp)
+target_compile_options(pikmin PRIVATE -O2 -Wall -Wextra)
+target_link_libraries(pikmin PRIVATE "$<LINK_LIBRARY:WHOLE_ARCHIVE,pikmin_rt>" pikmin_gen pikmin_hle_stubs)

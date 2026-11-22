@@ -1,5 +1,10 @@
 // Headless VI: retraces are clock events at 50 Hz (PAL) or 60 Hz; VIWaitForRetrace blocks the caller.
+#include <atomic>
+#include <cstdio>
+#include <cstdlib>
+
 #include "rt/clock.hpp"
+#include "rt/log.hpp"
 #include "rt/guest.hpp"
 #include "rt/irq.hpp"
 #include "rt/sched.hpp"
@@ -9,16 +14,22 @@ using rt::ret;
 
 namespace {
 constexpr uint32_t kRetraceQueue = 0x817F0400u;  // wait key for VIWaitForRetrace
-uint32_t g_count = 0;
+std::atomic<uint32_t> g_count{0};  // read by the watchdog thread
+uint32_t g_frame_limit = 0;
 uint32_t g_callback = 0;
 uint32_t g_hz = 50;
 bool g_running = false;
 
 void retrace() {
     ++g_count;
+    if (g_frame_limit && g_count >= g_frame_limit) {
+        std::fflush(stdout);
+        rt::log("vi", "frame limit %u reached", g_frame_limit);
+        std::exit(0);
+    }
     rt::sched().wakeup(kRetraceQueue);
     if (uint32_t cb = g_callback) {
-        uint32_t n = g_count;
+        uint32_t n = g_count.load();
         rt::irq().post([=](ppc_ctx* ic) { rt::call_guest(ic, cb, n); });
     }
     rt::schedule_at(rt::clock().ticks() + rt::Clock::kTicksPerSec / g_hz, retrace);
@@ -32,7 +43,8 @@ void start() {
 }  // namespace
 
 namespace rt {
-uint32_t vi_retrace_count() { return g_count; }
+uint32_t vi_retrace_count() { return g_count.load(); }
+void vi_set_frame_limit(uint32_t n) { g_frame_limit = n; }
 }  // namespace rt
 
 extern "C" {
@@ -52,13 +64,13 @@ void hle_VIConfigure(ppc_ctx* c) {
 void hle_VIWaitForRetrace(ppc_ctx* c) {
     HLE_ENTRY(c, "VIWaitForRetrace");
     start();
-    uint32_t target = g_count + 1;
+    uint32_t target = g_count.load() + 1;
     while (g_count < target) rt::sched().sleep_on(kRetraceQueue);
 }
 
 void hle_VIGetRetraceCount(ppc_ctx* c) {
     HLE_ENTRY(c, "VIGetRetraceCount");
-    ret(c, g_count);
+    ret(c, g_count.load());
 }
 
 void hle_VISetPostRetraceCallback(ppc_ctx* c) {
