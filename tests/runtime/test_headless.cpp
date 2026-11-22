@@ -11,7 +11,13 @@
 
 DEFINE_TEST_HOOKS
 
+#include <stdexcept>
+
 extern "C" {
+void hle_OSGetTick(ppc_ctx*);
+void hle_OSCreateThread(ppc_ctx*);
+void hle_OSResumeThread(ppc_ctx*);
+void hle_OSSuspendThread(ppc_ctx*);
 void hle_VIInit(ppc_ctx*);
 void hle_VIWaitForRetrace(ppc_ctx*);
 void hle_VIGetRetraceCount(ppc_ctx*);
@@ -34,6 +40,11 @@ static void retrace_cb(ppc_ctx* c) {
     ++g_retrace_cbs;
 }
 
+static bool g_stop_poller = false;
+static void poller(ppc_ctx* c) {
+    while (!g_stop_poller) call(hle_OSGetTick, c, {});  // safe points while the main thread waits
+}
+
 int main() {
     ppc_ctx c = make_ctx();
     rt::sched().init(&c, 0x817F0100u);
@@ -48,6 +59,26 @@ int main() {
     rt::safe_point();
     CHECK(call(hle_VIGetRetraceCount, &c, {}) == start + 10);
     CHECK(g_retrace_cbs == 10 && g_increasing);
+
+    // A retrace that fires at a low-priority thread's safe point must finish (callback posted,
+    // next retrace scheduled) before the woken main thread runs.
+    g_retrace_cbs = 0;
+    g_last_count = 0;
+    call(hle_OSCreateThread, &c, {0x80200000u, fake_fn(poller), 0, 0x80380000u, 0x1000, 20, 0});
+    call(hle_OSResumeThread, &c, {0x80200000u});
+    call(hle_VIWaitForRetrace, &c, {});
+    rt::safe_point();
+    CHECK(g_retrace_cbs == 1);
+    call(hle_OSSuspendThread, &c, {0x80200000u});
+    rt::sched().set_deadlock_handler([] { throw std::runtime_error("deadlock"); });
+    bool deadlocked = false;
+    try {
+        call(hle_VIWaitForRetrace, &c, {});
+    } catch (const std::runtime_error&) {
+        deadlocked = true;
+    }
+    CHECK(!deadlocked);
+    rt::sched().set_deadlock_handler(nullptr);
 
     // PAD: no controllers
     std::memset(&test_ram()[0x300000], 0x55, 48);

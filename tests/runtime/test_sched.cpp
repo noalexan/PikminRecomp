@@ -28,6 +28,8 @@ void ppc_bad_access(uint32_t ea) {
 using rt::sched;
 
 static void t_log_T(ppc_ctx*) { g_log += "T"; }
+static int g_runs = 0;
+static void t_count(ppc_ctx* c) { c->r[3] = static_cast<uint32_t>(++g_runs); }
 static void t_wakeup(ppc_ctx*) {
     g_log += "T";
     sched().wakeup(g_queue);
@@ -110,6 +112,20 @@ int main() {
     reset();
     sched().resume(spawn(0x80201800, t_deep, 10));
     CHECK(g_log == "D");
+
+    // the same OSThread struct reused for successive threads (System::startLoading does this)
+    reset();
+    g_runs = 0;
+    for (uint32_t i = 1; i <= 3; ++i) {
+        rt::GuestThread* lt = spawn(0x80202000, t_count, 20);
+        sched().resume(lt);
+        uint32_t v = 0;
+        CHECK(sched().join(lt, &v));
+        CHECK(v == i);
+        CHECK(sched().by_ea(0x80202000) == lt);
+    }
+    CHECK(g_runs == 3);
+    CHECK(sched().active_count() == 1);  // only main remains active
 
     // deadlock is reported instead of hanging
     reset();

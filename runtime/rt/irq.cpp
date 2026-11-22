@@ -56,12 +56,18 @@ void Irq::run_queue() {
     if (in_callback_) return;
     in_callback_ = true;
     ++sched().defer_depth;
+    // Callbacks run with interrupts disabled; whatever they do to the interrupt state must not
+    // leak into the thread they interrupted.
+    GuestThread* t = sched().current();
+    const bool saved = t ? t->irq_on : true;
     while (!queue_.empty()) {
         auto cb = std::move(queue_.front());
         queue_.pop_front();
         ctx_.r[1] = kStackTop;
+        if (t) t->irq_on = false;
         cb(&ctx_);
     }
+    if (t) t->irq_on = saved;
     --sched().defer_depth;
     in_callback_ = false;
 }
@@ -74,7 +80,10 @@ void Irq::deliver() {
 // Strong definition replacing the weak no-op in log.cpp: every HLE entry is a safe point.
 void safe_point() {
     if (irq().in_callback()) return;
+    // Events must run to completion before any thread they wake gets to run.
+    ++sched().defer_depth;
     run_due_events();
+    --sched().defer_depth;
     irq().deliver();
     sched().reschedule();
 }

@@ -29,3 +29,7 @@ def test_headless_boot_600_frames(tmp_path):
     assert "[vi] frame limit 600 reached" in r.stderr
     assert len(re.findall(r"^\[dvd\] open ", r.stderr, re.M)) >= 5
     assert len(re.findall(r"^\[os\] OSCreateThread ", r.stderr, re.M)) >= 2
+    # The loading-screen thread struct is reused for every load: each creation must actually run.
+    loader_created = len(re.findall(r"^\[os\] OSCreateThread 8039dc38 ", r.stderr, re.M))
+    loader_started = len(re.findall(r"^\[os\] thread 8039dc38 started", r.stderr, re.M))
+    assert loader_created >= 2 and loader_started == loader_created

@@ -68,10 +68,15 @@ void hle_OSWaitCond(ppc_ctx* c) {
     uint32_t cond = arg(c, 0), m = arg(c, 1);
     if (rd32(c, m + kOwner) != self()) return;
     uint32_t count = rd32(c, m + kCount);
+    // Sleep on the condition *before* releasing the mutex, so a mutex waiter that signals
+    // right away cannot be missed (the SDK avoids this via priority inheritance).
+    sched().begin_sleep(cond);
     wr32(c, m + kOwner, 0);
     wr32(c, m + kCount, 0);
+    ++sched().defer_depth;
     sched().wakeup(m);
-    sched().sleep_on(cond);
+    --sched().defer_depth;
+    sched().reschedule();
     lock(c, m, count);
 }
 

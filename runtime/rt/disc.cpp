@@ -1,6 +1,7 @@
 #include "rt/disc.hpp"
 
 #include <fcntl.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include <algorithm>
@@ -75,7 +76,11 @@ Disc Disc::open(const std::string& path) {
     if (id != kGameId) {
         throw DiscError(path + ": disc is " + id + ", expected " + kGameId + " (Pikmin, PAL)");
     }
+    struct stat st{};
+    fstat(d.fd_, &st);
+    const uint64_t image_size = static_cast<uint64_t>(st.st_size);
     uint32_t fst_off = be32(&d.header_[0x424]), fst_size = be32(&d.header_[0x428]);
+    if (static_cast<uint64_t>(fst_off) + fst_size > image_size) throw DiscError(path + ": truncated disc image (file table)");
     std::vector<uint8_t> fst(fst_size);
     if (fst_size < 12 || d.read(fst_off, fst) != fst_size) throw DiscError(path + ": cannot read the file table");
     uint32_t count = be32(&fst[8]);
@@ -96,6 +101,9 @@ Disc Disc::open(const std::string& path) {
         for (uint32_t k = name_off; k < fst_size && fst[k]; ++k) name.push_back(static_cast<char>(std::tolower(fst[k])));
         std::string full = stack.back().second + "/" + name;
         bool is_dir = (w0 >> 24) != 0;
+        if (!is_dir && static_cast<uint64_t>(w1) + w2 > image_size) {
+            throw DiscError(path + ": truncated disc image (" + full + " ends past the end of the file)");
+        }
         d.entries_[i] = {is_dir ? 0 : w1, w2, is_dir};  // dirs: length field holds the next-entry index
         d.paths_[full] = static_cast<int>(i);
         if (is_dir) stack.push_back({w2, full});

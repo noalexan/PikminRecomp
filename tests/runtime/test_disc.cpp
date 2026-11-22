@@ -26,7 +26,7 @@ static void put32(std::vector<uint8_t>& v, size_t off, uint32_t x) {
 }
 
 // Minimal GCM: header, FST at 0x500 with /a.txt and /dir/B.bin.
-static std::string make_disc(const char* id, uint32_t magic) {
+static std::string make_disc(const char* id, uint32_t magic, size_t image_size = 0xA00) {
     std::vector<uint8_t> d(0xA00, 0);
     std::memcpy(d.data(), id, 6);
     put32(d, 0x1C, magic);
@@ -45,9 +45,10 @@ static std::string make_disc(const char* id, uint32_t magic) {
     std::memcpy(&d[str], names, sizeof names);
     std::memcpy(&d[0x800], "hello", 5);
     std::memcpy(&d[0x900], "\xDE\xAD\xBE\xEF", 4);
-    std::string path = std::string(std::getenv("TMPDIR") ? std::getenv("TMPDIR") : "/tmp") + "/pikmin_test_" + id + "_" + std::to_string(magic) + ".iso";
+    std::string path = std::string(std::getenv("TMPDIR") ? std::getenv("TMPDIR") : "/tmp") + "/pikmin_test_" + id + "_" +
+                       std::to_string(magic) + "_" + std::to_string(image_size) + ".iso";
     FILE* f = std::fopen(path.c_str(), "wb");
-    std::fwrite(d.data(), 1, d.size(), f);
+    std::fwrite(d.data(), 1, image_size, f);
     std::fclose(f);
     return path;
 }
@@ -89,6 +90,15 @@ int main() {
     }
     CHECK(threw);
 
+    // truncated image: /dir/B.bin (0x900..0x904) lies past the end of a 0x902-byte file
+    threw = false;
+    try {
+        rt::Disc::open(make_disc("GPIP01", 0xC2339F3D, 0x902));
+    } catch (const rt::DiscError& e) {
+        threw = std::string(e.what()).find("truncated") != std::string::npos;
+    }
+    CHECK(threw);
+
     // DVD HLE
     ppc_ctx c = make_ctx();
     rt::sched().init(&c, 0x817F0100u);
@@ -102,6 +112,9 @@ int main() {
     CHECK(call(hle_DVDConvertPathToEntrynum, &c, {PATH}) == 3);
     CHECK(call(hle_DVDReadPrio, &c, {FI, DST, 4, 0, 2}) == 4);
     CHECK(rt::rd32(&c, DST) == 0xDEADBEEFu);
+
+    // a read running past the end of the image reports the bytes actually read
+    CHECK(call(hle_DVDReadPrio, &c, {FI, DST, 0x200, 0, 2}) == 0xA00 - 0x900);
 
     std::memcpy(&test_ram()[0x300000], "/missing.bin", 13);
     CHECK(call(hle_DVDOpen, &c, {PATH, FI}) == 0);

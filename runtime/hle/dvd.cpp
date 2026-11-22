@@ -26,9 +26,11 @@ bool fill_file_info(ppc_ctx* c, int entry, uint32_t fi) {
     return true;
 }
 
-void read_into(ppc_ctx* c, uint32_t fi, uint32_t addr, uint32_t len, uint32_t offset) {
+uint32_t read_into(ppc_ctx* c, uint32_t fi, uint32_t addr, uint32_t len, uint32_t offset) {
     uint32_t start = rt::rd32(c, fi + kFiStart);
-    rt::disc()->read(static_cast<uint64_t>(start) + offset, std::span<uint8_t>(rt::host(c, addr, len), len));
+    size_t n = rt::disc()->read(static_cast<uint64_t>(start) + offset, std::span<uint8_t>(rt::host(c, addr, len), len));
+    if (n != len) rt::log("dvd", "short read: %zu of %u bytes at disc offset 0x%x", n, len, start + offset);
+    return static_cast<uint32_t>(n);
 }
 }  // namespace
 
@@ -67,8 +69,7 @@ void hle_DVDClose(ppc_ctx* c) {
 void hle_DVDReadPrio(ppc_ctx* c) {
     HLE_ENTRY(c, "DVDReadPrio");
     uint32_t fi = arg(c, 0), addr = arg(c, 1), len = arg(c, 2), offset = arg(c, 3);
-    read_into(c, fi, addr, len, offset);
-    ret(c, len);
+    ret(c, read_into(c, fi, addr, len, offset));
 }
 
 void hle_DVDReadAsyncPrio(ppc_ctx* c) {
@@ -84,11 +85,11 @@ void hle_DVDReadAsyncPrio(ppc_ctx* c) {
     rt::schedule_at(rt::clock().ticks() + rt::Clock::kTicksPerSec / 1000, [=] {
         ppc_ctx tmp{};
         tmp.mem = mem;
-        read_into(&tmp, fi, addr, len, offset);
-        wr32(&tmp, fi + kCbTransferred, len);
+        uint32_t n = read_into(&tmp, fi, addr, len, offset);
+        wr32(&tmp, fi + kCbTransferred, n);
         wr32(&tmp, fi + kCbState, 0);
         --g_pending;
-        if (cb) rt::irq().post([=](ppc_ctx* ic) { rt::call_guest(ic, cb, len, fi); });
+        if (cb) rt::irq().post([=](ppc_ctx* ic) { rt::call_guest(ic, cb, n, fi); });
     });
     ret(c, 1);
 }

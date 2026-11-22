@@ -51,6 +51,21 @@ int main() {
     rt::irq().deliver();
     CHECK(g_log == "S");
 
+    // callbacks run with interrupts disabled and cannot re-enable them for the thread they interrupt
+    setup(rt::Clock::Mode::Fast);
+    rt::irq().disable();  // main enters a critical section and sleeps inside it
+    rt::schedule_at(rt::clock().ticks() + 1000, [] {
+        rt::irq().post([](ppc_ctx*) {
+            g_log += rt::irq().enabled() ? "E" : "d";
+            rt::irq().restore(true);  // callback re-enables (OSEnableInterrupts)
+            rt::sched().wakeup(0x80300200u);
+        });
+    });
+    rt::sched().sleep_on(0x80300200u);
+    CHECK(g_log == "d");
+    CHECK(!rt::irq().enabled());  // still inside main's critical section
+    rt::irq().restore(true);
+
     // fast clock jumps straight to the next event when every thread sleeps
     setup(rt::Clock::Mode::Fast);
     uint64_t due = rt::clock().ticks() + rt::Clock::kTicksPerSec;

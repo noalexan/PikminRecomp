@@ -26,9 +26,8 @@ Scheduler& sched() {
 }
 
 void Scheduler::init(ppc_ctx* main_ctx, uint32_t main_thread_ea) {
-    for (auto& t : threads_) graveyard_.push_back(std::move(t));
-    threads_.clear();
-    graveyard_.clear();  // only called from the main host context, so no stack is live
+    threads_.clear();  // only called from the main host context, so no fiber stack is live
+    retired_.clear();
     auto main = std::make_unique<GuestThread>();
     main->ea = main_thread_ea;
     main->prio = 16;
@@ -48,6 +47,7 @@ void Scheduler::init(ppc_ctx* main_ctx, uint32_t main_thread_ea) {
 void fiber_main() {
     Scheduler& s = sched();
     GuestThread* t = s.current_;
+    log("os", "thread %08x started (entry %08x)", t->ea, t->entry);
     ppc_lookup(t->entry)(t->ctx);
     s.exit_current(t->ctx->r[3]);
 }
@@ -80,6 +80,15 @@ GuestThread* Scheduler::create(uint32_t thread_ea, uint32_t entry, uint32_t para
     t->uc.uc_link = nullptr;
     makecontext(&t->uc, fiber_main, 0);
 
+    // A new thread on a struct used before replaces the old entry (System::startLoading reuses one).
+    for (auto it = threads_.begin(); it != threads_.end();) {
+        if ((*it)->ea == thread_ea && it->get() != current_) {
+            retired_.push_back(std::move(*it));
+            it = threads_.erase(it);
+        } else {
+            ++it;
+        }
+    }
     GuestThread* raw = t.get();
     threads_.push_back(std::move(t));
     write_guest(raw);
@@ -147,8 +156,18 @@ void Scheduler::switch_to(GuestThread* t) {
     current_ = t;
     write_guest(t);
     swapcontext(&old->uc, &t->uc);
-    // Resumed: free stacks of threads that finished while we were away.
-    if (current_ == old) graveyard_.clear();
+    reclaim_stacks();  // resumed: free stacks of threads that finished while we were away
+}
+
+void Scheduler::reclaim_stacks() {
+    auto reclaim = [this](GuestThread* t) {
+        if (t->stack && t->state == GuestThread::Moribund && t != current_) {
+            munmap(t->stack, t->stack_size);
+            t->stack = nullptr;
+        }
+    };
+    for (auto& t : threads_) reclaim(t.get());
+    for (auto& t : retired_) reclaim(t.get());
 }
 
 void Scheduler::reschedule() {
@@ -201,10 +220,14 @@ void Scheduler::yield() {
     if (best && best != current_ && best->prio <= current_->prio) switch_to(best);
 }
 
-void Scheduler::sleep_on(uint32_t queue_ea) {
+void Scheduler::begin_sleep(uint32_t queue_ea) {
     current_->state = GuestThread::Waiting;
     current_->wait_key = queue_ea;
     write_guest(current_);
+}
+
+void Scheduler::sleep_on(uint32_t queue_ea) {
+    begin_sleep(queue_ea);
     reschedule();
 }
 

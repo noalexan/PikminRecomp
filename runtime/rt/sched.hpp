@@ -45,6 +45,9 @@ public:
     void suspend(GuestThread* t);
     void yield();
     void sleep_on(uint32_t queue_ea);
+    // Marks the current thread as waiting on queue_ea without switching; the caller must call
+    // reschedule() (used to release a lock and sleep atomically, e.g. OSWaitCond).
+    void begin_sleep(uint32_t queue_ea);
     void wakeup(uint32_t queue_ea);
     [[noreturn]] void exit_current(uint32_t value);
     void cancel(GuestThread* t);
@@ -74,7 +77,10 @@ private:
     void write_guest(GuestThread* t);
 
     std::vector<std::unique_ptr<GuestThread>> threads_;
-    std::vector<std::unique_ptr<GuestThread>> graveyard_;  // finished threads whose stacks may still be live
+    // Threads replaced by a new OSCreateThread on the same struct. Kept alive (a joiner may still
+    // hold a pointer); their stacks are unmapped once they have exited and are not running.
+    std::vector<std::unique_ptr<GuestThread>> retired_;
+    void reclaim_stacks();
     GuestThread* current_ = nullptr;
     uint64_t next_seq_ = 1;
     std::function<bool()> idle_;

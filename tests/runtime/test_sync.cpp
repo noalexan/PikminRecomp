@@ -1,3 +1,4 @@
+#include <stdexcept>
 #include <string>
 
 #include "check.hpp"
@@ -54,6 +55,14 @@ static void t_signal(ppc_ctx* c) {
     call(hle_OSUnlockMutex, c, {M});
 }
 
+static uint32_t g_flag = 0;
+static void t_set_flag(ppc_ctx* c) {
+    call(hle_OSLockMutex, c, {M});  // blocks: main holds M
+    g_flag = 1;
+    call(hle_OSSignalCond, c, {COND});
+    call(hle_OSUnlockMutex, c, {M});
+}
+
 static void t_receive(ppc_ctx* c) {
     for (int i = 0; i < 2; ++i) {
         call(hle_OSReceiveMessage, c, {MQ, OUT, 1});
@@ -85,6 +94,24 @@ int main() {
     g_log += "W";
     CHECK(g_log == "SW");
     CHECK(rt::rd32(&g_main, M + 0x08) == 0x817F0100u);  // main owns the mutex again
+
+    // OSWaitCond must not lose a signal sent by a higher-priority thread waiting on the mutex
+    setup();
+    g_flag = 0;
+    call(hle_OSInitMutex, &g_main, {M});
+    call(hle_OSInitCond, &g_main, {COND});
+    call(hle_OSLockMutex, &g_main, {M});
+    spawn(t_set_flag, 10, 0x80200600u);  // runs now and blocks on M
+    rt::sched().set_deadlock_handler([] { throw std::runtime_error("deadlock"); });
+    bool deadlocked = false;
+    try {
+        while (!g_flag) call(hle_OSWaitCond, &g_main, {COND, M});
+    } catch (const std::runtime_error&) {
+        deadlocked = true;
+    }
+    rt::sched().set_deadlock_handler(nullptr);
+    CHECK(!deadlocked && g_flag == 1);
+    CHECK(rt::rd32(&g_main, M + 0x08) == 0x817F0100u);
 
     // message queue: capacity, blocking receive preemption, FIFO order
     setup();
