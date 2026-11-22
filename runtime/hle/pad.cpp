@@ -1,5 +1,6 @@
 // PAD: aurora's SDL input when graphics are active (keyboard + gamepads), "no controller" when headless.
 // A test input script (--input-script) overrides port 0 in both modes.
+#include "enhance/enhance.hpp"
 #include "rt/gfx.hpp"
 #include "rt/guest.hpp"
 #include "rt/input_script.hpp"
@@ -57,14 +58,19 @@ void write_no_controller(ppc_ctx* c, uint32_t status) {
     }
 }
 
-void apply_script(ppc_ctx* c, uint32_t status) {
+// Returns whether the script holds the swarm modifier (false without a script).
+bool apply_script(ppc_ctx* c, uint32_t status) {
     if (auto s = rt::scripted_pad(rt::vi_retrace_count())) {
         for (uint32_t off = 0; off < 12; off += 4) rt::wr32(c, status + off, 0);
         rt::wr16(c, status, s->buttons);
         rt::wr8(c, status + 2, static_cast<uint8_t>(s->stick_x));
         rt::wr8(c, status + 3, static_cast<uint8_t>(s->stick_y));
+        rt::wr8(c, status + 4, static_cast<uint8_t>(s->substick_x));
+        rt::wr8(c, status + 5, static_cast<uint8_t>(s->substick_y));
         rt::wr8(c, status + 0x0A, 0);  // connected
+        return s->swarm;
     }
+    return false;
 }
 }  // namespace
 
@@ -87,17 +93,20 @@ void hle_PADRead(ppc_ctx* c) {
     HLE_ENTRY(c, "PADRead");
     uint32_t status = arg(c, 0);
     uint32_t result = 0;
+    bool swarm = false;
 #ifdef PIKMIN_GRAPHICS
     if (rt::gfx_active()) {
         PADStatus host[PAD_CHANMAX] = {};
         result = PADRead(host);
         for (uint32_t p = 0; p < PAD_CHANMAX; ++p) rt::pad_to_guest(c, status + p * 12, host[p]);
+        swarm = (host[0].extButton & PAD_BUTTON_MISC1) != 0;  // LB / Left Shift (rt/pad_layout.cpp)
     } else
 #endif
     {
         write_no_controller(c, status);
     }
-    apply_script(c, status);
+    swarm = apply_script(c, status) || swarm;
+    enh::route_right_stick(c, status, swarm);  // modern camera: right stick = camera unless swarming
     ret(c, result);
 }
 

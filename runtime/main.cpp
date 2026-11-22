@@ -16,6 +16,7 @@
 #include <thread>
 #include <vector>
 
+#include "enhance/enhance.hpp"
 #include "rt/boot.hpp"
 #include "rt/clock.hpp"
 #include "rt/config.hpp"
@@ -42,7 +43,8 @@ namespace {
 void usage() {
     std::puts(
         "usage: pikmin [--disc PATH] [--headless | --offscreen] [--fast] [--frames N] [--watchdog SECONDS]\n"
-        "              [--screenshot FRAME:PATH] [--input-script PATH] [--config PATH]");
+        "              [--screenshot FRAME:PATH] [--input-script PATH] [--config PATH]\n"
+        "              [--aspect auto|4:3] [--target-fps auto|original|N] [--hud-scale X] [--camera modern|original]");
 }
 
 // $XDG_DATA_HOME/pikminrecomp (falls back to ~/.local/share/pikminrecomp), created if missing.
@@ -116,6 +118,7 @@ int main(int argc, char** argv) {
     std::string shot_path;
     uint32_t frames = 0;
     int watchdog = 5;
+    std::string aspect_arg, fps_arg, hud_arg, camera_arg;
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
         auto next = [&]() -> std::string {
@@ -146,6 +149,10 @@ int main(int argc, char** argv) {
         else if (a == "--frames") frames = static_cast<uint32_t>(std::stoul(next()));
         else if (a == "--watchdog") watchdog = std::stoi(next());
         else if (a == "--config") config_path = next();
+        else if (a == "--aspect") aspect_arg = next();
+        else if (a == "--target-fps") fps_arg = next();
+        else if (a == "--hud-scale") hud_arg = next();
+        else if (a == "--camera") camera_arg = next();
         else if (a == "--help" || a == "-h") {
             usage();
             return 0;
@@ -159,6 +166,27 @@ int main(int argc, char** argv) {
         fail("no disc image: pass --disc PATH or set disc = \"...\" in " + config_path);
     }
     const bool headless = headless_flag || (cfg.headless && !offscreen);
+
+    // Enhancements: config file, overridden by the command line.
+    enh::Settings& es = enh::settings();
+    es.aspect = cfg.aspect;
+    es.target_fps = cfg.target_fps;
+    es.hud_scale = cfg.hud_scale;
+    es.modern_camera = cfg.modern_camera;
+    if (!aspect_arg.empty() && (es.aspect = rt::parse_aspect(aspect_arg)) < 0.f) fail("--aspect expects auto or 4:3");
+    if (!fps_arg.empty() && (es.target_fps = rt::parse_fps(fps_arg)) < -1) {
+        fail("--target-fps expects auto, original or 20-1000");
+    }
+    if (!hud_arg.empty()) {
+        es.hud_scale = std::strtof(hud_arg.c_str(), nullptr);
+        if (es.hud_scale < 0.2f || es.hud_scale > 1.5f) fail("--hud-scale expects 0.2-1.5");
+    }
+    if (!camera_arg.empty()) {
+        if (camera_arg != "modern" && camera_arg != "original") fail("--camera expects modern or original");
+        es.modern_camera = camera_arg == "modern";
+    }
+    // Headless runs have nothing to show: keep the original pacing unless asked otherwise.
+    if (headless && fps_arg.empty()) es.target_fps = -1;
 
     std::unique_ptr<rt::Disc> disc;
     try {
@@ -176,9 +204,13 @@ int main(int argc, char** argv) {
         g.height = static_cast<uint32_t>(cfg.window_height);
         g.fullscreen = cfg.fullscreen;
         g.vsync = cfg.vsync;
+        g.aspect_4_3 = es.aspect > 0.f;
         g.state_dir = state_dir();
         g.guest_ram_end = ram.data() + ram.size();
         if (!rt::gfx_init(g)) rt::exit_process(2);  // gfx_init printed the one-line reason
+        const int hz = rt::gfx_display_refresh();
+        es.display_hz = hz > 0 ? hz : 60;
+        es.window_vsync = !offscreen && cfg.vsync && hz > 0;
         if (!shot_path.empty()) rt::gfx_request_screenshot(shot_frame, shot_path);
     } else if (!shot_path.empty()) {
         fail("--screenshot needs graphics (drop --headless, or use --offscreen)");
@@ -206,6 +238,9 @@ int main(int argc, char** argv) {
 
     rt::g_card_dir = state_dir() + "/card_a";
     rt::log("boot", "disc %s, %s clock", disc_path.c_str(), fast ? "fast" : "real-time");
+    if (es.target_fps < 0) rt::log("boot", "original frame pacing (PAL VI)");
+    else rt::log("boot", "game loop at %d fps%s, display %d Hz", enh::effective_fps(), es.window_vsync ? " (vsync)" : "",
+                 es.display_hz);
     rt::boot_guest(&ctx, header32);
     std::fflush(stdout);
     return 0;

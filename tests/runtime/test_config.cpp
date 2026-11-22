@@ -19,5 +19,11 @@ int main() {
 
     rt::Config bad = rt::parse_config("language = \"fr\"\n");
     CHECK(bad.language == 0 && bad.warnings.size() == 1);
+    rt::Config enh = rt::parse_config("aspect = \"4:3\"\ntarget_fps = \"original\"\nhud_scale = 0.6\ncamera = \"original\"\n");
+    CHECK(enh.warnings.empty());
+    CHECK(enh.aspect > 1.33f && enh.aspect < 1.34f && enh.target_fps == -1 && enh.hud_scale == 0.6f && !enh.modern_camera);
+    rt::Config def = rt::parse_config("target_fps = 144\naspect = \"auto\"\n");
+    CHECK(def.target_fps == 144 && def.aspect == 0.f && def.hud_scale == 0.5f && def.modern_camera);
+    CHECK(rt::parse_fps("5") == -2 && rt::parse_aspect("wide") < 0.f);
     return check_result();
 }

@@ -10,6 +10,7 @@ struct GfxOptions {
     uint32_t width = 1920, height = 1440;
     bool fullscreen = true;
     bool vsync = true;
+    bool aspect_4_3 = false;        // pillarbox the 640x480 image instead of filling the window (Hor+)
     std::string state_dir;          // aurora settings/caches; required (never defaults into $HOME silently)
     const void* guest_ram_end = nullptr;  // bound for inferred vertex array extents
 };
@@ -17,6 +18,10 @@ struct GfxOptions {
 // Returns false (after logging one line) if no usable GPU adapter is found.
 bool gfx_init(const GfxOptions& opt);
 bool gfx_active();
+// Size of the presented image in pixels (window framebuffer or offscreen surface); false if inactive.
+bool gfx_output_size(uint32_t& w, uint32_t& h);
+// Refresh rate of the display showing the window (0 if unknown or offscreen).
+int gfx_display_refresh();
 // End the frame, handle window events, begin the next frame. Called at each retrace.
 void gfx_present();
 // Handle window events between presents (called at each retrace).
