@@ -48,9 +48,18 @@ Config parse_config(const std::string& text) {
             long v = std::strtol(value.c_str(), &end, 10);
             if (!is_str && end && *end == '\0' && v >= 0 && v <= 5) cfg.language = static_cast<int>(v);
             else warn("language must be an integer 0-5");
-        } else if (key == "headless") {
-            if (value == "true" || value == "false") cfg.headless = value == "true";
-            else warn("headless must be true or false");
+        } else if (key == "headless" || key == "fullscreen" || key == "vsync") {
+            bool* dst = key == "headless" ? &cfg.headless : key == "fullscreen" ? &cfg.fullscreen : &cfg.vsync;
+            if (value == "true" || value == "false") *dst = value == "true";
+            else warn(key + " must be true or false");
+        } else if (key == "window_width" || key == "window_height") {
+            char* end = nullptr;
+            long v = std::strtol(value.c_str(), &end, 10);
+            if (!is_str && end && *end == '\0' && v >= 320 && v <= 16384) {
+                (key == "window_width" ? cfg.window_width : cfg.window_height) = static_cast<int>(v);
+            } else {
+                warn(key + " must be an integer 320-16384");
+            }
         } else {
             warn("unknown key '" + key + "' ignored");
         }

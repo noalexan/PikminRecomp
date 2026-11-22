@@ -2,6 +2,7 @@
 #include <execinfo.h>
 #include <pthread.h>
 #include <signal.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include <atomic>
@@ -17,6 +18,7 @@
 #include "rt/clock.hpp"
 #include "rt/config.hpp"
 #include "rt/disc.hpp"
+#include "rt/gfx.hpp"
 #include "rt/irq.hpp"
 #include "rt/log.hpp"
 #include "rt/sched.hpp"
@@ -35,7 +37,19 @@ namespace {
 
 void usage() {
     std::puts(
-        "usage: pikmin [--disc PATH] [--headless] [--fast] [--frames N] [--watchdog SECONDS] [--config PATH]");
+        "usage: pikmin [--disc PATH] [--headless | --offscreen] [--fast] [--frames N] [--watchdog SECONDS]\n"
+        "              [--screenshot FRAME:PATH] [--config PATH]");
+}
+
+// $XDG_DATA_HOME/pikminrecomp (falls back to ~/.local/share/pikminrecomp), created if missing.
+std::string state_dir() {
+    const char* xdg = std::getenv("XDG_DATA_HOME");
+    std::string base = xdg && *xdg ? xdg : std::string(std::getenv("HOME") ? std::getenv("HOME") : ".") + "/.local/share";
+    std::string dir = base + "/pikminrecomp";
+    for (size_t i = 1; i <= dir.size(); ++i) {
+        if (i == dir.size() || dir[i] == '/') mkdir(dir.substr(0, i).c_str(), 0755);
+    }
+    return dir;
 }
 
 std::vector<uint8_t> read_dol(const rt::Disc& disc) {
@@ -93,7 +107,9 @@ void start_watchdog(int seconds) {
 
 int main(int argc, char** argv) {
     std::string config_path = rt::default_config_path(), disc_arg;
-    bool headless_flag = false, fast = false;
+    bool headless_flag = false, offscreen = false, fast = false;
+    uint32_t shot_frame = 0;
+    std::string shot_path;
     uint32_t frames = 0;
     int watchdog = 5;
     for (int i = 1; i < argc; ++i) {
@@ -104,6 +120,14 @@ int main(int argc, char** argv) {
         };
         if (a == "--disc") disc_arg = next();
         else if (a == "--headless") headless_flag = true;
+        else if (a == "--offscreen") offscreen = true;
+        else if (a == "--screenshot") {
+            std::string v = next();
+            size_t colon = v.find(':');
+            if (colon == std::string::npos || colon == 0) fail("--screenshot expects FRAME:PATH");
+            shot_frame = static_cast<uint32_t>(std::stoul(v.substr(0, colon)));
+            shot_path = v.substr(colon + 1);
+        }
         else if (a == "--fast") fast = true;
         else if (a == "--frames") frames = static_cast<uint32_t>(std::stoul(next()));
         else if (a == "--watchdog") watchdog = std::stoi(next());
@@ -120,9 +144,7 @@ int main(int argc, char** argv) {
     if (disc_path.empty()) {
         fail("no disc image: pass --disc PATH or set disc = \"...\" in " + config_path);
     }
-    if (!(headless_flag || cfg.headless)) {
-        fail("windowed mode arrives with Plan 3 (aurora); run with --headless for now");
-    }
+    const bool headless = headless_flag || (cfg.headless && !offscreen);
 
     std::unique_ptr<rt::Disc> disc;
     try {
@@ -133,6 +155,21 @@ int main(int argc, char** argv) {
     std::vector<uint8_t> dol = read_dol(*disc);
 
     static std::vector<uint8_t> ram(PPC_RAM_SIZE), lc(PPC_LC_SIZE);
+    if (!headless) {
+        rt::GfxOptions g;
+        g.headless_surface = offscreen;
+        g.width = static_cast<uint32_t>(cfg.window_width);
+        g.height = static_cast<uint32_t>(cfg.window_height);
+        g.fullscreen = cfg.fullscreen;
+        g.vsync = cfg.vsync;
+        g.state_dir = state_dir();
+        g.guest_ram_end = ram.data() + ram.size();
+        if (!rt::gfx_init(g)) rt::exit_process(2);  // gfx_init printed the one-line reason
+        if (!shot_path.empty()) rt::gfx_request_screenshot(shot_frame, shot_path);
+    } else if (!shot_path.empty()) {
+        fail("--screenshot needs graphics (drop --headless, or use --offscreen)");
+    }
+
     static ppc_ctx ctx{};
     ctx.mem = ram.data();
     ctx.lc = lc.data();

@@ -30,14 +30,6 @@ def test_non_gamecube_file_is_one_line_error(tmp_path):
     assert len(r.stderr.strip().splitlines()) == 1
 
 
-def test_windowed_mode_not_yet_available(tmp_path):
-    junk = tmp_path / "junk.iso"
-    junk.write_bytes(b"\0" * 4096)
-    r = run(["--disc", str(junk)], tmp_path)
-    assert r.returncode == 2
-    assert "Plan 3" in r.stderr or "windowed" in r.stderr
-
-
 def test_strong_hle_definitions_linked():
     if not PIKMIN.exists():
         pytest.skip("pikmin executable not built")

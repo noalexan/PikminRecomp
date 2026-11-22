@@ -10,3 +10,9 @@ endfunction()
 
 pikmin_gfx_test(test_aurora_smoke)
 pikmin_gfx_test(test_aurora_arrays)
+
+add_executable(test_gfx_runtime test_gfx_runtime.cpp)
+target_link_libraries(test_gfx_runtime PRIVATE pikmin_rt)
+target_compile_definitions(test_gfx_runtime PRIVATE PIKMIN_TEST_STATE_DIR="${CMAKE_BINARY_DIR}/gfx-test-state")
+add_test(NAME test_gfx_runtime COMMAND test_gfx_runtime)
+set_tests_properties(test_gfx_runtime PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 120)

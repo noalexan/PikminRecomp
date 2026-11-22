@@ -9,6 +9,10 @@ struct Config {
     std::string disc;
     int language = 0;
     bool headless = false;
+    int window_width = 1920;
+    int window_height = 1440;
+    bool fullscreen = false;
+    bool vsync = true;
     std::vector<std::string> warnings;
 };
 
