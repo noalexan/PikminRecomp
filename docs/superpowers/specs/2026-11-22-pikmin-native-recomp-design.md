@@ -1,7 +1,7 @@
 # Pikmin native recompilation: design
 
 Date: 2026-11-22
-Status: approved 2026-11-22
+Status: approved 2026-11-22; hardware targets updated 2026-11-22 (RTX 5070, 240 Hz)
 
 ## Intent
 
@@ -23,8 +23,8 @@ Graphics, input, disc and save layers come from
 3. Widescreen at any aspect ratio, including 16:10 (the laptop panel) and 16:9.
    The 3D view gets wider, the HUD keeps its proportions and stays anchored
    correctly, and nothing pops in at the new screen edges.
-4. High framerate: run game logic at the display's refresh rate (60/120/144),
-   uncapped from the original 25/50 Hz PAL timing.
+4. High framerate: run game logic at the display's refresh rate (up to the
+   panel's 240 Hz), uncapped from the original 25/50 Hz PAL timing.
 5. Working audio (music and SFX), controller and keyboard input, memory card
    saves and cutscene videos.
 
@@ -54,10 +54,17 @@ Graphics, input, disc and save layers come from
 
 ## Constraints and known facts
 
-- **Target machine:** Fedora 45, Wayland, AMD Ryzen with Radeon 610M iGPU
-  (RADV, Vulkan 1.4; a weak GPU, only 2 CUs), 32 threads, 30 GB RAM, 2560x1600
-  16:10 panel. Performance budget: steady 60 fps at native resolution on this
-  iGPU. Higher refresh is a stretch goal.
+- **Target machine:** Fedora 45, KDE Plasma on Wayland, AMD Ryzen (32 threads,
+  30 GB RAM), hybrid graphics: **NVIDIA GeForce RTX 5070 Laptop** (driver
+  620.70.06, Vulkan) plus AMD Radeon 610M iGPU (RADV, 2 CUs). 2560x1600 16:10
+  panel at **240 Hz**.
+  - Performance budget: **steady 240 fps at native resolution on the RTX 5070**,
+    and steady 60 fps on the Radeon 610M as the low-end fallback (e.g. when
+    running on battery with the dGPU off).
+  - The renderer requests the high-performance adapter, so the RTX 5070 is
+    picked without manual PRIME offload; a config option can force the iGPU.
+  - At 240 Hz a logic step is ~4.2 ms (vs. 20 ms original): the frame-count
+    audit (Enhancements → Framerate) is mandatory, not optional.
 - **Toolchain:** cmake, ninja, gcc-c++, clang, SDL3-devel and vulkan-loader-devel
   are installed via dnf. The user edits with nvim only: no IDE project files.
 - **Input artifacts** (already in the repo, all gitignored):
@@ -308,8 +315,8 @@ and need no special handling beyond a correct translation.
 6. **Audio:** music and SFX through the DSP ucode HLE.
 7. **Enhancements:** high-res verified, widescreen (3D + HUD + culling),
    high framerate with the frame-count audit.
-8. **Full playthrough** on the laptop at 60 fps native resolution; fix what
-   breaks.
+8. **Full playthrough** on the laptop at 240 fps native resolution on the
+   RTX 5070 (and a smoke test at 60 fps on the Radeon 610M); fix what breaks.
 
 ## Verification
 
