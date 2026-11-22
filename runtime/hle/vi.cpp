@@ -27,7 +27,7 @@ void retrace() {
         rt::log("vi", "frame limit %u reached", g_frame_limit);
         rt::exit_process(0);
     }
-    rt::gfx_present();  // no-op when graphics are inactive (headless)
+    rt::gfx_pump_events();  // presenting happens at GXCopyDisp; keep the window responsive
     rt::sched().wakeup(kRetraceQueue);
     if (uint32_t cb = g_callback) {
         uint32_t n = g_count.load();

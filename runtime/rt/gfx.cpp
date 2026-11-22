@@ -30,6 +30,7 @@ bool gfx_init(const GfxOptions&) {
 }
 bool gfx_active() { return false; }
 void gfx_present() {}
+void gfx_pump_events() {}
 void gfx_request_screenshot(uint32_t, std::string) {}
 #else
 
@@ -126,6 +127,23 @@ bool gfx_init(const GfxOptions& opt) {
 }
 
 bool gfx_active() { return g_active; }
+
+void gfx_pump_events() {
+    if (!g_active) return;
+    static uint32_t retraces_since_present = 0;
+    static uint32_t last_presents = 0;
+    if (g_presents != last_presents) {
+        last_presents = g_presents;
+        retraces_since_present = 0;
+        return;
+    }
+    // No frame finished for a while (loading, stalls): present anyway so the window stays alive.
+    if (++retraces_since_present >= 30) {
+        retraces_since_present = 0;
+        gfx_present();
+        last_presents = g_presents;
+    }
+}
 
 void gfx_request_screenshot(uint32_t frame, std::string path) {
     g_shot.frame = frame;

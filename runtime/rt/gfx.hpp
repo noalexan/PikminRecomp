@@ -19,6 +19,8 @@ bool gfx_init(const GfxOptions& opt);
 bool gfx_active();
 // End the frame, handle window events, begin the next frame. Called at each retrace.
 void gfx_present();
+// Handle window events between presents (called at each retrace).
+void gfx_pump_events();
 // Capture the frame presented as present number `frame` (1-based) and write a binary PPM to `path`.
 void gfx_request_screenshot(uint32_t frame, std::string path);
 // Closes a GXBegin left open by guest code (real implementation in the GX shims).

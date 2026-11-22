@@ -92,6 +92,9 @@ void hle_GXCopyDisp(ppc_ctx* c) {
     static int n = 0;
     if (std::getenv("PIKMIN_GFX_TRACE") && n++ < 5) rt::log("gxtrace", "GXCopyDisp(%08x, %u)", arg(c, 0), arg(c, 1));
     GXCopyDisp(host_ptr(c, arg(c, 0)), GXBool(arg(c, 1)));
+    // The display copy marks a finished frame: present it now. Presenting at every retrace instead
+    // shows half-drawn frames whenever the game takes more than one retrace per frame (flicker).
+    rt::gfx_present();
 }
 
 void hle_GXCopyTex(ppc_ctx* c) {

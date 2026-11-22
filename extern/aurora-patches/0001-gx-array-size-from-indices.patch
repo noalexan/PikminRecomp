@@ -1,5 +1,6 @@
 PikminRecomp: infer vertex array extents from indices when GXSetArray size is 0.
 The GameCube SDK never passes an array size; uploading a guessed size is either wrong or wasteful.
+PIKMIN_ARRAY_DEBUG=1 logs large array uploads.
 
 diff --git a/include/dolphin/gx/GXAurora.h b/include/dolphin/gx/GXAurora.h
 index 60a64be..44960e6 100644
@@ -19,10 +20,15 @@ index 60a64be..44960e6 100644
  void AuroraReadbackDestroyStream(AuroraReadbackStream stream);
  
 diff --git a/lib/gx/command_processor.cpp b/lib/gx/command_processor.cpp
-index e846a89..fcaaa67 100644
+index e846a89..23bc827 100644
 --- a/lib/gx/command_processor.cpp
 +++ b/lib/gx/command_processor.cpp
-@@ -379,6 +379,59 @@ static u32 calc_vtx_size(GXVtxFmt fmt) noexcept {
+@@ -1,3 +1,4 @@
++#include <cstdlib>
+ #include "command_processor.hpp"
+ 
+ #include "../gfx/recording.hpp"
+@@ -379,6 +380,64 @@ static u32 calc_vtx_size(GXVtxFmt fmt) noexcept {
    return vtxSize;
  }
  
@@ -69,6 +75,11 @@ index e846a89..fcaaa67 100644
 +          extent = std::min<u64>(extent, static_cast<u64>(sUnknownArrayEnd - base));
 +        }
 +        if (extent > array.inferredSize) {
++          // Grow geometrically: each growth re-uploads the whole array, and extents creep up draw by draw.
++          extent = std::max<u64>(extent, static_cast<u64>(array.inferredSize) * 2);
++          if (sUnknownArrayEnd != nullptr && base < sUnknownArrayEnd) {
++            extent = std::min<u64>(extent, static_cast<u64>(sUnknownArrayEnd - base));
++          }
 +          array.inferredSize = static_cast<u32>(extent);
 +          array.cachedRange = {};
 +          g_gxState.dirty |= DirtyImmediates;
@@ -82,17 +93,24 @@ index e846a89..fcaaa67 100644
  static void push_gx_draw(GXPrimitive prim, GXVtxFmt fmt, u16 vtxCount, gfx::Range vertRange, gfx::Range idxRange,
                           u32 numIndices) noexcept {
    auto& state = g_gxState;
-@@ -391,7 +444,8 @@ static void push_gx_draw(GXPrimitive prim, GXVtxFmt fmt, u16 vtxCount, gfx::Rang
+@@ -391,7 +445,15 @@ static void push_gx_draw(GXPrimitive prim, GXVtxFmt fmt, u16 vtxCount, gfx::Rang
      }
      auto& array = state.arrays[i];
      if (array.cachedRange.size == 0) {
 -      array.cachedRange = gfx::push_storage(static_cast<const uint8_t*>(array.data), array.size);
-+      array.cachedRange = gfx::push_storage(static_cast<const uint8_t*>(array.data),
-+                                            array.size != 0 ? array.size : array.inferredSize);
++      const u32 pushSize = array.size != 0 ? array.size : array.inferredSize;
++      array.cachedRange = gfx::push_storage(static_cast<const uint8_t*>(array.data), pushSize);
++      static const bool debug = std::getenv("PIKMIN_ARRAY_DEBUG") != nullptr;
++      static int logged = 0;
++      if (debug && pushSize >= 65536 && logged < 40) {
++        ++logged;
++        Log.warn("array push attr {} data {} stride {} size {} (inferred {})", i, array.data, array.stride, pushSize,
++                 array.inferredSize);
++      }
      }
      immediates.arrayStart[i - GX_VA_POS] = array.cachedRange.offset;
    }
-@@ -522,6 +576,7 @@ static void draw_prim(GXPrimitive prim, GXVtxFmt fmt, u16 vtxCount, ByteReader&
+@@ -522,6 +584,7 @@ static void draw_prim(GXPrimitive prim, GXVtxFmt fmt, u16 vtxCount, ByteReader&
    if (totalVtxBytes > reader.remaining())
      UNLIKELY { handle_draw_overrun(totalVtxBytes, reader); }
    const auto vertexData = reader.take(totalVtxBytes);
@@ -100,7 +118,7 @@ index e846a89..fcaaa67 100644
  
    vtxCount = trunc_vtx_count(prim, vtxCount);
    if (vtxCount == 0)
-@@ -633,6 +688,7 @@ void handle_aurora(ByteReader& reader) noexcept {
+@@ -633,6 +696,7 @@ void handle_aurora(ByteReader& reader) noexcept {
        array.size = arraySize;
        array.le = le;
        array.cachedRange = {};
@@ -108,7 +126,7 @@ index e846a89..fcaaa67 100644
        g_gxState.dirty |= DirtyImmediates;
      }
    } else if (subCmd == GX_AURORA_LOAD_TEXOBJ) {
-@@ -833,3 +889,7 @@ void clear_draw_cache() noexcept {
+@@ -833,3 +897,7 @@ void clear_draw_cache() noexcept {
  }
  
  } // namespace aurora::gx::fifo
