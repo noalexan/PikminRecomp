@@ -23,6 +23,9 @@ class TranslateContext(Protocol):
     def jump_table(self, addr: int) -> tuple[int, int] | None:
         """(table address, entry count) if a jump-table data symbol starts at addr."""
 
+    def jump_tables_into(self, start: int, end: int) -> list[int]:
+        """Union of entries of every jump table whose entries all lie in [start, end)."""
+
 
 @dataclass
 class FnState:
@@ -33,6 +36,8 @@ class FnState:
     insns: list[Insn]
     labels: set[int] = field(default_factory=set)
     unimpl: list[tuple[int, int]] = field(default_factory=list)
+    jump_tables: dict[int, list[int]] = field(default_factory=dict)
+    unresolved_bcctr: list[int] = field(default_factory=list)
 
     def contains(self, addr: int) -> bool:
         return self.start <= addr < self.end

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from recomp.decode import decode
 from recomp.emit import EMITTERS, FnState, RecompError, TranslateContext, load_all
-from recomp.emit.flow import branch_target, is_terminator
+from recomp.emit.flow import branch_target, find_jump_table, is_terminator
 
 __all__ = ["RecompError", "TranslateContext", "translate_function", "translate_words"]
 
@@ -18,10 +18,15 @@ def translate_function_state(ctx: TranslateContext, name: str, start: int, end: 
                              comment: str = "") -> tuple[str, FnState]:
     insns = [decode(ctx.read_u32(a), a) for a in range(start, end, 4)]
     st = FnState(ctx, name, start, end, insns)
-    for i in insns:
+    for idx, i in enumerate(insns):
         t = branch_target(i)
         if t is not None and st.contains(t):
             st.labels.add(t)
+        if i.op == "bcctr" and not i.a["lk"]:
+            targets = find_jump_table(st, idx) or ctx.jump_tables_into(start, end)
+            if targets:
+                st.jump_tables[i.addr] = targets
+                st.labels.update(targets)
     body = []
     for i in insns:
         if i.addr in st.labels:
@@ -67,6 +72,14 @@ class _WordsContext:
 
     def jump_table(self, addr: int) -> tuple[int, int] | None:
         return (addr, self.tables[addr]) if addr in self.tables else None
+
+    def jump_tables_into(self, start: int, end: int) -> list[int]:
+        out = []
+        for table, n in self.tables.items():
+            entries = [self.read_u32(table + 4 * k) for k in range(n)]
+            if all(start <= e < end for e in entries):
+                out += entries
+        return out
 
 
 def translate_words(words: list[int], addr: int, name: str, *, data: dict[int, bytes] | None = None,
