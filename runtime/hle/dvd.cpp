@@ -6,6 +6,7 @@
 #include "rt/guest.hpp"
 #include "rt/irq.hpp"
 #include "rt/log.hpp"
+#include "rt/sched.hpp"
 
 using rt::arg;
 using rt::ret;
@@ -31,6 +32,15 @@ uint32_t read_into(ppc_ctx* c, uint32_t fi, uint32_t addr, uint32_t len, uint32_
     size_t n = rt::disc()->read(static_cast<uint64_t>(start) + offset, std::span<uint8_t>(rt::host(c, addr, len), len));
     if (n != len) rt::log("dvd", "short read: %zu of %u bytes at disc offset 0x%x", n, len, start + offset);
     return static_cast<uint32_t>(n);
+}
+// Sleeps the current guest thread until a clock event ~0.5 ms later (no-op outside a thread).
+void block_briefly(ppc_ctx* c) {
+    if (!rt::sched().current() || rt::irq().in_callback()) return;
+    static uint32_t seq = 0;
+    const uint32_t key = 0x817F0800u + 4 * (seq++ & 0xFF);  // wait keys only; never dereferenced
+    rt::schedule_at(rt::clock().ticks() + rt::Clock::kTicksPerSec / 2000, [key] { rt::sched().wakeup(key); });
+    rt::sched().sleep_on(key);
+    (void)c;
 }
 }  // namespace
 
@@ -58,7 +68,10 @@ void hle_DVDFastOpen(ppc_ctx* c) {
 
 void hle_DVDConvertPathToEntrynum(ppc_ctx* c) {
     HLE_ENTRY(c, "DVDConvertPathToEntrynum");
-    ret(c, static_cast<uint32_t>(rt::disc()->path_to_entry(rt::rdstr(c, arg(c, 0)))));
+    std::string path = rt::rdstr(c, arg(c, 0));
+    int entry = rt::disc()->path_to_entry(path);
+    if (entry < 0) rt::log("dvd", "not found %s", path.c_str());
+    ret(c, static_cast<uint32_t>(entry));
 }
 
 void hle_DVDClose(ppc_ctx* c) {
@@ -69,7 +82,12 @@ void hle_DVDClose(ppc_ctx* c) {
 void hle_DVDReadPrio(ppc_ctx* c) {
     HLE_ENTRY(c, "DVDReadPrio");
     uint32_t fi = arg(c, 0), addr = arg(c, 1), len = arg(c, 2), offset = arg(c, 3);
-    ret(c, read_into(c, fi, addr, len, offset));
+    uint32_t n = read_into(c, fi, addr, len, offset);
+    // A synchronous read blocks the calling thread on the GameCube, letting lower-priority threads
+    // run meanwhile. JAudio depends on that: its DVD thread (higher priority than the game) runs a
+    // scene's "BGM loaded" callback only after the game thread has recorded the scene's BGM.
+    block_briefly(c);
+    ret(c, n);
 }
 
 void hle_DVDReadAsyncPrio(ppc_ctx* c) {

@@ -123,26 +123,36 @@ def test_hle_stubs_are_weak(generated):
     assert lines and all(l.startswith("__attribute__((weak)) void hle_") for l in lines)
 
 
-def test_jaudio_entry_points_overridden(generated, game_image):
+def test_jaudio_is_translated(generated, game_image):
+    """JAudio runs as translated code; only the SDK's dsp.a/ai.a below it are HLE."""
     _, out = generated
     src = _all_gen(out)
-    for name in ("Jac_Init", "StartAudioThread", "Jac_Start"):
+    for name in ("Jac_Init", "StartAudioThread", "Jac_Start", "Jac_PlaySystemSe", "__DSPHandler"):
         addr = _addr_of(game_image, name)
-        assert not re.search(rf"^void f_{addr:08x}\(", src, re.M), name
+        assert re.search(rf"^void f_{addr:08x}\(", src, re.M), name
 
 
-def test_game_never_calls_translated_jaudio(generated, game_image):
-    """Audio is stubbed at the game/JAudio boundary: game code only reaches JAudio through hle_* stubs."""
+def test_dsp_handler_address_matches_runtime(game_image):
+    """runtime/hle/dsp.cpp calls JAudio's DSP interrupt handler by address."""
+    assert _addr_of(game_image, "__DSPHandler") == 0x80008920
+
+
+def test_poll_marks_entry_and_loop_heads():
+    """A "poll" function calls ppc_poll at entry and at each backward-branch target."""
+    from recomp.translate import _WordsContext, translate_function_state
+
+    # 0x100: lwz r3,0(r4) / cmpwi r3,0 / beq 0x100 / blr  -- a busy-wait on a flag
+    words = [0x80640000, 0x2C030000, 0x4182FFF8, 0x4E800020]
+    ctx = _WordsContext(words, 0x100, {}, {}, {}, {})
+    src, _ = translate_function_state(ctx, "f", 0x100, 0x110, poll=True)
+    assert src.count("ppc_poll(c, 0x00000100u);") == 2  # entry + loop head
+    plain, _ = translate_function_state(ctx, "f", 0x100, 0x110)
+    assert "ppc_poll" not in plain
+
+
+def test_jaudio_busy_waits_poll(generated, game_image):
     _, out = generated
-    byaddr = {f.addr: f for f in game_image.functions}
-    allowed = {"sqrtf__3stdFf"}  # math helper that lives in jaudio.o
-    offenders = set()
-    for fn in re.split(r"\n(?=void f_)", _all_gen(out)):
-        m = re.match(r"void f_([0-9a-f]+)", fn)
-        if not m or byaddr[int(m[1], 16)].library == "jaudio.o":
-            continue
-        for t in re.findall(r"\bf_([0-9a-f]{8})\(c\)", fn):
-            callee = byaddr.get(int(t, 16))
-            if callee and callee.library == "jaudio.o" and callee.name not in allowed:
-                offenders.add(callee.name)
-    assert not offenders, sorted(offenders)
+    src = _all_gen(out)
+    addr = _addr_of(game_image, "Jac_InitEventSystem")
+    body = re.search(rf"^void f_{addr:08x}\(.*?^}}", src, re.M | re.S)[0]
+    assert "ppc_poll(c," in body

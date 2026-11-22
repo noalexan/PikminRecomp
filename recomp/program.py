@@ -44,14 +44,24 @@ def load_overrides(img: Image, path: Path) -> set[int]:
     for name, mode in per_fn.items():
         if name not in known:
             raise RecompError(f"{path}: unknown function {name!r} in [functions]")
-        if mode not in ("override", "translate"):
-            raise RecompError(f"{path}: {name!r} must be \"override\" or \"translate\", got {mode!r}")
+        if mode not in ("override", "translate", "poll"):
+            raise RecompError(f"{path}: {name!r} must be \"override\", \"translate\" or \"poll\", got {mode!r}")
     out = set()
     for f in img.functions:
         mode = per_fn.get(f.name)
         if mode == "override" or (mode is None and f.library in libs):
             out.add(f.addr)
     return out
+
+
+def load_polls(img: Image, path: Path) -> set[int]:
+    """Functions marked "poll": translated, but entry and loop heads are scheduling points (ppc_poll).
+
+    For guest busy-wait loops whose exit depends on another thread or an interrupt: on the
+    GameCube the interrupt would preempt the loop; here the loop must offer the chance.
+    """
+    per_fn = tomllib.loads(path.read_text()).get("functions", {})
+    return {f.addr for f in img.functions if per_fn.get(f.name) == "poll"}
 
 
 class ImageContext:
@@ -137,6 +147,7 @@ def _unique_entries(img: Image) -> list[Function]:
 def generate(img: Image, overrides: Path, out: Path, shards: int = 64) -> Report:
     out.mkdir(parents=True, exist_ok=True)
     overridden = load_overrides(img, overrides)
+    polls = load_polls(img, overrides)
     ctx = ImageContext(img, overridden)
     report = Report()
     functions = _unique_entries(img)
@@ -151,7 +162,7 @@ def generate(img: Image, overrides: Path, out: Path, shards: int = 64) -> Report
             continue
         sym = ctx.symbol(f)
         try:
-            src, st = translate_function_state(ctx, sym, f.addr, f.addr + f.size, f.name)
+            src, st = translate_function_state(ctx, sym, f.addr, f.addr + f.size, f.name, poll=f.addr in polls)
         except RecompError as e:
             report.errors.append(f"{f.name} @ 0x{f.addr:08x}: {e}")
             src = (f"void {sym}(ppc_ctx *c) {{ /* {f.name}: translation failed */ "

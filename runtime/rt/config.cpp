@@ -48,8 +48,11 @@ Config parse_config(const std::string& text) {
             long v = std::strtol(value.c_str(), &end, 10);
             if (!is_str && end && *end == '\0' && v >= 0 && v <= 5) cfg.language = static_cast<int>(v);
             else warn("language must be an integer 0-5");
-        } else if (key == "headless" || key == "fullscreen" || key == "vsync") {
-            bool* dst = key == "headless" ? &cfg.headless : key == "fullscreen" ? &cfg.fullscreen : &cfg.vsync;
+        } else if (key == "headless" || key == "fullscreen" || key == "vsync" || key == "audio") {
+            bool* dst = key == "headless"     ? &cfg.headless
+                        : key == "fullscreen" ? &cfg.fullscreen
+                        : key == "audio"      ? &cfg.audio
+                                              : &cfg.vsync;
             if (value == "true" || value == "false") *dst = value == "true";
             else warn(key + " must be true or false");
         } else if (key == "window_width" || key == "window_height") {

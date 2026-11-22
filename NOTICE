@@ -1,0 +1,7 @@
+PikminRecomp
+
+runtime/hle/dsp/zelda.cpp and runtime/hle/dsp/zelda.h are ported from the Dolphin emulator
+(https://github.com/dolphin-emu/dolphin, Source/Core/Core/HW/DSPHLE/UCodes/Zelda.{cpp,h},
+commit f1c89c5), Copyright 2008 Dolphin Emulator Project, licensed GPL-2.0-or-later.
+Because the program links that code, PikminRecomp as a whole is distributed under the
+GNU General Public License, version 2 or (at your option) any later version.

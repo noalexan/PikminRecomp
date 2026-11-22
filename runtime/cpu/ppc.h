@@ -42,6 +42,8 @@ PPC_NORETURN void ppc_hle_missing(const char *name, uint32_t addr);
 uint64_t ppc_timebase(void);
 uint32_t ppc_mmio_read(uint32_t phys, int size);
 void ppc_mmio_write(uint32_t phys, uint32_t value, int size);
+/* Entry of functions marked "poll" in overrides.toml: lets interrupts and other threads run. */
+void ppc_poll(ppc_ctx *c, uint32_t addr);
 
 #ifdef __cplusplus
 }

@@ -242,8 +242,10 @@ SDL3 audio stream. Dolphin's `UCode_Zelda` is the reference implementation
 (see the licensing note). The audio DMA rate is the original 32 kHz; resample
 in SDL.
 
-Audio is milestone-gated (it's the most self-contained hard part), so the game
-must be able to run with audio stubbed (DSP mailbox answers as if idle).
+Implemented: `runtime/hle/dsp.cpp` (mailbox + interrupt to JAudio's `__DSPHandler`),
+`runtime/hle/dsp/zelda.*` (Dolphin's `UCode_Zelda`, flags for CRC 0x267FD05A), `runtime/hle/ai.cpp`
+(DMA blocks as clock events) and `runtime/rt/audio_out.cpp` (SDL3 stream, `PIKMIN_AUDIO_DUMP` WAV).
+Config `audio = false` disables output; `--headless`/`--fast` never open a device.
 
 ### 5. Cutscene video
 

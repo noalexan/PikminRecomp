@@ -22,6 +22,12 @@ uint8_t* aram_ptr(uint32_t addr, uint32_t len) {
 }
 }  // namespace
 
+namespace rt {
+// The DSP HLE reads sample data straight out of ARAM.
+uint8_t* aram_data() { return aram().data(); }
+uint32_t aram_size() { return kAramSize; }
+}  // namespace rt
+
 extern "C" {
 
 void hle_ARInit(ppc_ctx* c) {

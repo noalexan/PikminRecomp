@@ -15,7 +15,8 @@ def translate_function(ctx: TranslateContext, name: str, start: int, end: int, c
 
 
 def translate_function_state(ctx: TranslateContext, name: str, start: int, end: int,
-                             comment: str = "") -> tuple[str, FnState]:
+                             comment: str = "", poll: bool = False) -> tuple[str, FnState]:
+    """poll: entry and every loop head (backward-branch target) call ppc_poll(c, addr)."""
     insns = [decode(ctx.read_u32(a), a) for a in range(start, end, 4)]
     st = FnState(ctx, name, start, end, insns)
     for idx, i in enumerate(insns):
@@ -27,10 +28,18 @@ def translate_function_state(ctx: TranslateContext, name: str, start: int, end: 
             if targets:
                 st.jump_tables[i.addr] = targets
                 st.labels.update(targets)
-    body = []
+    loop_heads = set()
+    if poll:
+        for i in insns:
+            t = branch_target(i)
+            if t is not None and st.contains(t) and t <= i.addr:
+                loop_heads.add(t)
+    body = [f"    ppc_poll(c, 0x{start:08x}u);"] if poll else []
     for i in insns:
         if i.addr in st.labels:
             body.append(f"L_{i.addr:08x}:;")
+        if i.addr in loop_heads:
+            body.append(f"    ppc_poll(c, 0x{i.addr:08x}u);")
         emitter = EMITTERS.get(i.op)
         if emitter is None:
             st.unimpl.append((i.addr, i.word))
