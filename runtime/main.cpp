@@ -27,6 +27,7 @@
 #include "rt/sched.hpp"
 
 namespace rt {
+extern std::string g_card_dir;
 uint32_t vi_retrace_count();
 void vi_set_frame_limit(uint32_t n);
 }  // namespace rt
@@ -203,6 +204,7 @@ int main(int argc, char** argv) {
     if (frames) rt::vi_set_frame_limit(frames);
     if (watchdog > 0) start_watchdog(watchdog);
 
+    rt::g_card_dir = state_dir() + "/card_a";
     rt::log("boot", "disc %s, %s clock", disc_path.c_str(), fast ? "fast" : "real-time");
     rt::boot_guest(&ctx, header32);
     std::fflush(stdout);
