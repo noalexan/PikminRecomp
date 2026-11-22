@@ -1,0 +1,68 @@
+/* Semantics test harness: runs one translated function and dumps state as JSON. */
+#include <inttypes.h>
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "memory.h"
+#include "ops.h"
+#include "ppc.h"
+#include "ps.h"
+
+static uint32_t mmio_log[256][3];
+static int mmio_n;
+
+void ppc_mmio_write(uint32_t phys, uint32_t value, int size) {
+    if (mmio_n < 256) {
+        mmio_log[mmio_n][0] = phys;
+        mmio_log[mmio_n][1] = value;
+        mmio_log[mmio_n][2] = (uint32_t)size;
+        mmio_n++;
+    }
+}
+uint32_t ppc_mmio_read(uint32_t phys, int size) { (void)phys; (void)size; return 0; }
+void ppc_bad_access(uint32_t ea) { fprintf(stderr, "bad access %08x\n", ea); exit(3); }
+void ppc_unimpl(ppc_ctx *c, uint32_t addr, uint32_t word) {
+    (void)c;
+    fprintf(stderr, "unimplemented %08x: %08x\n", addr, word);
+    exit(4);
+}
+void ppc_hle_missing(const char *name, uint32_t addr) { fprintf(stderr, "hle %s %08x\n", name, addr); exit(5); }
+uint64_t ppc_timebase(void) { return 0x0000000100000002ull; }
+static void lookup_stub(ppc_ctx *c) { c->r[3] = 0x42; }
+ppc_fn ppc_lookup(uint32_t addr) { (void)addr; return lookup_stub; }
+
+@EXTRA@
+
+@FUNCTION@
+
+int main(int argc, char **argv) {
+    static uint8_t ram[PPC_RAM_SIZE];
+    static uint8_t lc[PPC_LC_SIZE];
+    static ppc_ctx ctx;
+    ppc_ctx *c = &ctx;
+    c->mem = ram;
+    c->lc = lc;
+    c->r[1] = 0x80400000u;
+@INIT@
+    f_test(c);
+    FILE *ramf = fopen(argv[1], "wb");
+    fwrite(ram, 1, sizeof ram, ramf);
+    fclose(ramf);
+    printf("{\"r\":[");
+    for (int i = 0; i < 32; i++) printf("%s%" PRIu32, i ? "," : "", c->r[i]);
+    printf("],\"f\":[");
+    for (int i = 0; i < 32; i++)
+        printf("%s[%" PRIu64 ",%" PRIu64 "]", i ? "," : "", ppc_dbits(c->f[i].ps0), ppc_dbits(c->f[i].ps1));
+    printf("],\"gqr\":[");
+    for (int i = 0; i < 8; i++) printf("%s%" PRIu32, i ? "," : "", c->gqr[i]);
+    printf("],\"cr\":%" PRIu32 ",\"xer\":%" PRIu32 ",\"lr\":%" PRIu32 ",\"ctr\":%" PRIu32 ",\"fpscr\":%" PRIu32,
+           c->cr, c->xer, c->lr, c->ctr, c->fpscr);
+    printf(",\"mmio\":[");
+    for (int i = 0; i < mmio_n; i++)
+        printf("%s[%" PRIu32 ",%" PRIu32 ",%" PRIu32 "]", i ? "," : "", mmio_log[i][0], mmio_log[i][1], mmio_log[i][2]);
+    printf("]}\n");
+    (void)argc;
+    return 0;
+}
