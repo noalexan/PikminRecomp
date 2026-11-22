@@ -15,6 +15,10 @@ public:
     // Current guest time. In fast mode each read also advances time slightly, so guest code
     // that polls the clock always makes progress.
     uint64_t ticks();
+    // Real mode: a cheap reading that may lag by up to kCoarseLag (CLOCK_MONOTONIC_COARSE; the
+    // precise clock can be a slow HPET read). Fast mode: same as ticks().
+    uint64_t coarse_ticks();
+    static constexpr uint64_t kCoarseLag = kTicksPerSec / 200;  // 5 ms, > any kernel tick
     // Fast mode: jump forward. Real mode: sleep until the host reaches `t`.
     void advance_to(uint64_t t);
 
