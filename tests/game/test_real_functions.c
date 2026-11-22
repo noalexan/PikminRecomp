@@ -80,8 +80,30 @@ int main(int argc, char **argv) {
     f_8021b194(c);
     CHECK(c->r[3] == 6);
 
+    /* strcpy (MSL, word-at-a-time) for several alignments and lengths */
+    for (int salign = 0; salign < 4; ++salign) {
+        for (int dalign = 0; dalign < 4; ++dalign) {
+            for (int len = 0; len < 12; ++len) {
+                reset(c);
+                memset(ram + 0x500000, 'x', 64);
+                memset(ram + 0x500100, 0x5A, 64);
+                for (int k = 0; k < len; ++k) ram[0x500000 + salign + k] = (uint8_t)('a' + k);
+                ram[0x500000 + salign + len] = 0;
+                c->r[3] = 0x80500100u + (uint32_t)dalign;
+                c->r[4] = 0x80500000u + (uint32_t)salign;
+                f_8021b0e0(c);
+                int ok = c->r[3] == 0x80500100u + (uint32_t)dalign &&
+                         memcmp(ram + 0x500100 + dalign, ram + 0x500000 + salign, (size_t)len + 1) == 0 &&
+                         ram[0x500100 + dalign + len + 1] == 0x5A;
+                if (!ok) fprintf(stderr, "strcpy salign=%d dalign=%d len=%d\n", salign, dalign, len);
+                CHECK(ok);
+            }
+        }
+    }
+
     /* memset(dst, 0xAB, 16) */
     reset(c);
+    memset(ram + 0x500100, 0, 32);
     c->r[3] = 0x80500100u;
     c->r[4] = 0xAB;
     c->r[5] = 16;

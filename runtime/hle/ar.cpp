@@ -45,7 +45,12 @@ void hle_ARQPostRequest(ppc_ctx* c) {
     } else {
         std::memcpy(rt::host(c, dst, len), aram_ptr(src, len), len);  // ARAM -> main RAM
     }
-    if (cb) rt::irq().post([=](ppc_ctx* ic) { rt::call_guest(ic, cb, req); });
+    // The host copy is instant, so the completion interrupt fires now if interrupts allow it.
+    // (Games busy-wait on the flag this callback sets without making any OS call.)
+    if (cb) {
+        rt::irq().post([=](ppc_ctx* ic) { rt::call_guest(ic, cb, req); });
+        rt::irq().deliver();
+    }
 }
 
 }  // extern "C"

@@ -78,13 +78,13 @@ void hle_DCZeroRange(ppc_ctx* c) {
 void hle_OSResetSystem(ppc_ctx* c) {
     HLE_ENTRY(c, "OSResetSystem");
     rt::log("os", "OSResetSystem: exiting");
-    std::exit(0);
+    rt::exit_process(0);
 }
 
 void hle__ExitProcess(ppc_ctx* c) {
     HLE_ENTRY(c, "_ExitProcess");
     rt::log("os", "_ExitProcess: exiting");
-    std::exit(0);
+    rt::exit_process(0);
 }
 
 }  // extern "C"

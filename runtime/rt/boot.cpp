@@ -22,6 +22,10 @@ uint32_t be32(std::span<const uint8_t> d, size_t off) {
 
 uint32_t load_dol(ppc_ctx* c, std::span<const uint8_t> dol) {
     if (dol.size() < 0x100) throw BootError("DOL is smaller than its 0x100-byte header");
+    // Zero the header's BSS range first: it spans .bss..sbss2 and overlaps the initialised
+    // .sdata/.sdata2 sections, which the section copy below then restores.
+    uint32_t bss = be32(dol, 0xD8), bss_size = be32(dol, 0xDC);
+    if (bss_size) std::memset(host(c, bss, bss_size), 0, bss_size);
     for (int i = 0; i < 18; ++i) {
         uint32_t off = be32(dol, i * 4), addr = be32(dol, 0x48 + i * 4), size = be32(dol, 0x90 + i * 4);
         if (!size) continue;
@@ -30,8 +34,6 @@ uint32_t load_dol(ppc_ctx* c, std::span<const uint8_t> dol) {
         }
         std::memcpy(host(c, addr, size), dol.data() + off, size);
     }
-    uint32_t bss = be32(dol, 0xD8), bss_size = be32(dol, 0xDC);
-    if (bss_size) std::memset(host(c, bss, bss_size), 0, bss_size);
     return be32(dol, 0xE0);
 }
 

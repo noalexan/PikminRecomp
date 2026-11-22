@@ -43,13 +43,17 @@ int main() {
     for (int i = 0; i < 64; ++i) test_ram()[0x300000 + i] = static_cast<uint8_t>(i * 3);
     uint32_t cb = fake_fn(arq_cb);
     const uint32_t REQ = 0x80310000u;
+    // DMA completes instantly on the host: the completion "interrupt" fires before
+    // ARQPostRequest returns (games busy-wait on the flag the callback sets)...
     call(hle_ARQPostRequest, &c, {REQ, 0, 0, 1, 0x80300000u, 0x4000u, 64, cb});
-    CHECK(g_cb == 0);  // posted, not yet delivered
+    CHECK(g_cb == 1 && g_cb_req == REQ);
+    // ...unless interrupts are disabled, in which case it waits until they are re-enabled.
+    bool was = rt::irq().disable();
     call(hle_ARQPostRequest, &c, {REQ + 0x20, 0, 1, 1, 0x4000u, 0x80300100u, 64, cb});
-    CHECK(g_cb == 1);  // the second call's entry was a safe point
-    CHECK(std::memcmp(&test_ram()[0x300000], &test_ram()[0x300100], 64) == 0);
-    rt::safe_point();
+    CHECK(g_cb == 1);
+    rt::irq().restore(was);
     CHECK(g_cb == 2 && g_cb_req == REQ + 0x20);
+    CHECK(std::memcmp(&test_ram()[0x300000], &test_ram()[0x300100], 64) == 0);
 
     // ARAM address out of range faults
     g_expect_bad = true;

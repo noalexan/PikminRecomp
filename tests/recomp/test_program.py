@@ -126,6 +126,23 @@ def test_hle_stubs_are_weak(generated):
 def test_jaudio_entry_points_overridden(generated, game_image):
     _, out = generated
     src = _all_gen(out)
-    for name in ("Jac_Init", "StartAudioThread"):
+    for name in ("Jac_Init", "StartAudioThread", "Jac_Start"):
         addr = _addr_of(game_image, name)
         assert not re.search(rf"^void f_{addr:08x}\(", src, re.M), name
+
+
+def test_game_never_calls_translated_jaudio(generated, game_image):
+    """Audio is stubbed at the game/JAudio boundary: game code only reaches JAudio through hle_* stubs."""
+    _, out = generated
+    byaddr = {f.addr: f for f in game_image.functions}
+    allowed = {"sqrtf__3stdFf"}  # math helper that lives in jaudio.o
+    offenders = set()
+    for fn in re.split(r"\n(?=void f_)", _all_gen(out)):
+        m = re.match(r"void f_([0-9a-f]+)", fn)
+        if not m or byaddr[int(m[1], 16)].library == "jaudio.o":
+            continue
+        for t in re.findall(r"\bf_([0-9a-f]{8})\(c\)", fn):
+            callee = byaddr.get(int(t, 16))
+            if callee and callee.library == "jaudio.o" and callee.name not in allowed:
+                offenders.add(callee.name)
+    assert not offenders, sorted(offenders)

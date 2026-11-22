@@ -1,4 +1,9 @@
 // pikmin: runs the recompiled game. Plan 2 supports headless mode only.
+#include <execinfo.h>
+#include <pthread.h>
+#include <signal.h>
+#include <unistd.h>
+
 #include <atomic>
 #include <chrono>
 #include <cstdio>
@@ -48,7 +53,21 @@ std::vector<uint8_t> read_dol(const rt::Disc& disc) {
     return dol;
 }
 
+pthread_t g_game_thread;
+
+// Runs on the game thread when the watchdog fires: show where it is stuck, then exit.
+void on_watchdog_signal(int) {
+    void* frames[48];
+    int n = backtrace(frames, 48);
+    static const char kHead[] = "watchdog: game thread backtrace:\n";
+    write(2, kHead, sizeof kHead - 1);
+    backtrace_symbols_fd(frames, n, 2);
+    std::_Exit(3);
+}
+
 void start_watchdog(int seconds) {
+    g_game_thread = pthread_self();
+    signal(SIGUSR2, on_watchdog_signal);
     std::thread([seconds] {
         uint32_t last = rt::vi_retrace_count();
         auto since = std::chrono::steady_clock::now();
@@ -62,6 +81,8 @@ void start_watchdog(int seconds) {
                 std::fflush(stdout);
                 std::fprintf(stderr, "watchdog: no retrace for %d s; last HLE %s called from lr 0x%08x\n", seconds,
                              rt::current_function.name, rt::current_function.lr);
+                pthread_kill(g_game_thread, SIGUSR2);
+                std::this_thread::sleep_for(std::chrono::seconds(2));
                 std::_Exit(3);
             }
         }

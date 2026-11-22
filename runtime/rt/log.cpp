@@ -2,6 +2,7 @@
 
 #include <cstdarg>
 #include <cstdio>
+#include <cstdlib>
 #include <set>
 #include <string>
 
@@ -31,6 +32,12 @@ void log_once(const char* key, const char* fmt, ...) {
     va_start(ap, fmt);
     vlog("once", fmt, ap);
     va_end(ap);
+}
+
+void exit_process(int code) {
+    std::fflush(stdout);
+    std::fflush(stderr);
+    std::_Exit(code);
 }
 
 }  // namespace rt

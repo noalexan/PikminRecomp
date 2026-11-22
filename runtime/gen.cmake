@@ -48,4 +48,5 @@ add_library(pikmin_hle_stubs STATIC ${GEN_DIR}/hle_stubs.c)
 target_link_libraries(pikmin_hle_stubs PUBLIC pikmin_gen)
 add_executable(pikmin ${PROJECT_SOURCE_DIR}/runtime/main.cpp)
 target_compile_options(pikmin PRIVATE -O2 -Wall -Wextra)
+target_link_options(pikmin PRIVATE -rdynamic)  # readable f_<addr> frames in fatal backtraces
 target_link_libraries(pikmin PRIVATE "$<LINK_LIBRARY:WHOLE_ARCHIVE,pikmin_rt>" pikmin_gen pikmin_hle_stubs)

@@ -170,7 +170,7 @@ void Scheduler::reschedule() {
         if (!progress) {
             log("sched", "deadlock: all threads waiting");
             if (on_deadlock_) on_deadlock_();
-            std::exit(4);
+            exit_process(4);
         }
     }
 }

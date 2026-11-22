@@ -56,6 +56,15 @@ int main() {
     CHECK(rt::rd32(&c, 0x80300004u) == 0x55667788u);
     CHECK(ram[0x310000] == 0 && ram[0x3100FF] == 0 && ram[0x310100] == 0xAA);
 
+    // The DOL header's BSS range spans .bss..sbss2 and overlaps initialised .sdata: data wins.
+    auto overlap = make_dol();
+    put32(overlap, 0xD8, 0x80300000);  // BSS range starts at the data section...
+    put32(overlap, 0xDC, 0x20);        // ...and covers it
+    std::memset(&ram[0x300000], 0xAA, 0x20);
+    rt::load_dol(&c, overlap);
+    CHECK(rt::rd32(&c, 0x80300000u) == 0x11223344u && rt::rd32(&c, 0x80300004u) == 0x55667788u);
+    CHECK(ram[0x300008] == 0 && ram[0x30001F] == 0);
+
     bool threw = false;
     try {
         dol.resize(0x104);  // data section now past the end

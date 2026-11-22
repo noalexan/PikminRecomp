@@ -23,9 +23,8 @@ bool g_running = false;
 void retrace() {
     ++g_count;
     if (g_frame_limit && g_count >= g_frame_limit) {
-        std::fflush(stdout);
         rt::log("vi", "frame limit %u reached", g_frame_limit);
-        std::exit(0);
+        rt::exit_process(0);
     }
     rt::sched().wakeup(kRetraceQueue);
     if (uint32_t cb = g_callback) {
