@@ -149,3 +149,29 @@ def test_long_lis_distance():
 def test_two_blrl_in_one_function():
     s = run_case("blrl\nmtlr 4\nblrl", {"lr": 0x80123456, "r4": 0x80123456})
     assert s.r[3] == 0x42
+
+
+def test_self_recursive_call_is_real_call():
+    # count(n) = n ? 1 + count(n - 1) : 0, with a stack frame.
+    asm = ("count: stwu 1,-16(1)\nmflr 0\nstw 0,20(1)\ncmpwi 3,0\nbeq Z\n"
+           "addi 3,3,-1\nbl count\naddi 3,3,1\nb D\n"
+           "Z: li 3,0\nD: lwz 0,20(1)\nmtlr 0\naddi 1,1,16")
+    s = run_case(asm, {"r3": 3})
+    assert s.r[3] == 3
+    assert s.r[1] == 0x80400000
+
+
+def test_bl_to_alternate_entry_inside_function_is_call():
+    s = run_case("bl .+8\nb E\nli 3,9\nE: nop", extra_c="void f_alt(ppc_ctx *c) { c->r[3] = 5; }",
+                 entries={BASE + 8: "f_alt"})
+    assert s.r[3] == 5
+
+
+def test_pc_get_idiom_still_works():
+    assert run_case("bl .+4\nmflr 3").r[3] == BASE + 4
+
+
+def test_linked_branch_into_own_body_raises():
+    words = assemble("bl .+8\nnop\nnop")
+    with pytest.raises(RecompError, match="0x80003008"):
+        translate_words(words, BASE, "f_test")

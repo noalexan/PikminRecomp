@@ -56,11 +56,16 @@ def _foreign(i: Insn, st: FnState, target: int) -> str:
 
 
 def _transfer(i: Insn, st: FnState, target: int, link: bool) -> str:
-    lr = f"c->lr = 0x{i.addr + 4:08x}u; " if link else ""
+    if link:
+        lr = f"c->lr = 0x{i.addr + 4:08x}u; "
+        if target == i.addr + 4:  # `bl next; mflr rX` reads the PC
+            return f"{lr}goto L_{target:08x};"
+        if target == st.start:  # self-recursion: a real call, its blr returns here
+            return f"{lr}{st.name}(c);"
+        return f"{lr}{_foreign(i, st, target)}(c);"
     if st.contains(target):
-        return f"{lr}goto L_{target:08x};"
-    sym = _foreign(i, st, target)
-    return f"{lr}{sym}(c);" if link else f"{sym}(c); return;"
+        return f"goto L_{target:08x};"
+    return f"{_foreign(i, st, target)}(c); return;"
 
 
 @emits("b")
