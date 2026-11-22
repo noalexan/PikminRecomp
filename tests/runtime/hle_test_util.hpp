@@ -41,13 +41,20 @@ inline uint32_t call(void (*hle)(ppc_ctx*), ppc_ctx* c, std::initializer_list<ui
     return c->r[3];
 }
 
-#define DEFINE_TEST_HOOKS                                                   \
+// Test hooks: function lookup through test_funcs() and a fatal bad-access handler.
+#define DEFINE_TEST_LOOKUP                                                  \
     extern "C" {                                                            \
     ppc_fn ppc_lookup(uint32_t addr) { return test_funcs().at(addr); }      \
-    uint32_t ppc_mmio_read(uint32_t, int) { return 0; }                     \
-    void ppc_mmio_write(uint32_t, uint32_t, int) {}                         \
     void ppc_bad_access(uint32_t ea) {                                      \
         std::fprintf(stderr, "bad access %08x\n", ea);                      \
         std::exit(2);                                                       \
     }                                                                       \
+    }
+
+// Lookup + inert MMIO (tests that don't exercise the runtime's MMIO layer).
+#define DEFINE_TEST_HOOKS                                                   \
+    DEFINE_TEST_LOOKUP                                                      \
+    extern "C" {                                                            \
+    uint32_t ppc_mmio_read(uint32_t, int) { return 0; }                     \
+    void ppc_mmio_write(uint32_t, uint32_t, int) {}                         \
     }
