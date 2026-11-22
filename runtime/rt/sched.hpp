@@ -20,6 +20,7 @@ struct GuestThread {
     int suspend = 1;
     bool detached = false;
     bool started = false;
+    bool irq_on = true;      // per-thread interrupt enable (MSR[EE])
     uint32_t entry = 0;
     uint32_t wait_key = 0;   // queue address being slept on (0 = none)
     uint32_t exit_value = 0;

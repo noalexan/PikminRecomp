@@ -11,9 +11,6 @@ namespace rt {
 
 CurrentFunction current_function;
 
-// Replaced by the interrupt layer (Task 4); a no-op until then.
-__attribute__((weak)) void safe_point() {}
-
 static void vlog(const char* channel, const char* fmt, va_list ap) {
     std::fprintf(stderr, "[%s] ", channel);
     std::vfprintf(stderr, fmt, ap);
