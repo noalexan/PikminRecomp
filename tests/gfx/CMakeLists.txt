@@ -28,3 +28,4 @@ endfunction()
 
 pikmin_shim_test(test_gx_state)
 pikmin_shim_test(test_gx_geometry)
+pikmin_shim_test(test_pad)

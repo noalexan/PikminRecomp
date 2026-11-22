@@ -6,6 +6,8 @@
 #include <unistd.h>
 
 #include <atomic>
+#include <fstream>
+#include <sstream>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -19,6 +21,7 @@
 #include "rt/config.hpp"
 #include "rt/disc.hpp"
 #include "rt/gfx.hpp"
+#include "rt/input_script.hpp"
 #include "rt/irq.hpp"
 #include "rt/log.hpp"
 #include "rt/sched.hpp"
@@ -38,7 +41,7 @@ namespace {
 void usage() {
     std::puts(
         "usage: pikmin [--disc PATH] [--headless | --offscreen] [--fast] [--frames N] [--watchdog SECONDS]\n"
-        "              [--screenshot FRAME:PATH] [--config PATH]");
+        "              [--screenshot FRAME:PATH] [--input-script PATH] [--config PATH]");
 }
 
 // $XDG_DATA_HOME/pikminrecomp (falls back to ~/.local/share/pikminrecomp), created if missing.
@@ -121,6 +124,16 @@ int main(int argc, char** argv) {
         if (a == "--disc") disc_arg = next();
         else if (a == "--headless") headless_flag = true;
         else if (a == "--offscreen") offscreen = true;
+        else if (a == "--input-script") {
+            std::string path = next();
+            std::ifstream f(path);
+            if (!f) fail("cannot read input script " + path);
+            std::stringstream ss;
+            ss << f.rdbuf();
+            auto parsed = rt::parse_input_script(ss.str());
+            if (!parsed.error.empty()) fail(parsed.error);
+            rt::set_input_script(parsed.entries);
+        }
         else if (a == "--screenshot") {
             std::string v = next();
             size_t colon = v.find(':');
