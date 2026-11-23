@@ -32,7 +32,7 @@ add_custom_command(
 add_library(pikmin_gen STATIC ${GEN_SRCS} ${GEN_DIR}/functable.c)
 target_include_directories(pikmin_gen PUBLIC ${GEN_DIR} ${PROJECT_SOURCE_DIR}/runtime/cpu)
 # -ffp-contract=off: never fuse separate guest fmul/fadd into an FMA.
-target_compile_options(pikmin_gen PRIVATE -O2 -fno-strict-aliasing -fwrapv -ffp-contract=off -w)
+target_compile_options(pikmin_gen PRIVATE -O2 -fno-strict-aliasing -fwrapv -ffp-contract=off -w $<$<CONFIG:Release>:-g1>)
 target_link_libraries(pikmin_gen PUBLIC m)
 
 add_library(pikmin_stubs STATIC ${GEN_DIR}/hle_stubs.c ${PROJECT_SOURCE_DIR}/runtime/cpu/stubs.c)
@@ -61,7 +61,7 @@ add_executable(pikmin ${PROJECT_SOURCE_DIR}/runtime/main.cpp ${CMAKE_CURRENT_BIN
 file(RELATIVE_PATH PIKMIN_DATA_REL ${CMAKE_INSTALL_FULL_BINDIR} ${CMAKE_INSTALL_FULL_DATADIR}/pikminrecomp/data)
 target_compile_definitions(pikmin PRIVATE PIKMIN_DATA_REL="${PIKMIN_DATA_REL}"
                            PIKMIN_SOURCE_DATA="${PROJECT_SOURCE_DIR}/orig/GPIP01")
-target_compile_options(pikmin PRIVATE -O2 -Wall -Wextra)
+target_compile_options(pikmin PRIVATE -O2 -Wall -Wextra $<$<CONFIG:Release>:-g1>)
 target_link_options(pikmin PRIVATE -rdynamic)  # readable f_<addr> frames in fatal backtraces
 target_link_libraries(pikmin PRIVATE "$<LINK_LIBRARY:WHOLE_ARCHIVE,pikmin_rt>" pikmin_gen pikmin_hle_stubs)
 

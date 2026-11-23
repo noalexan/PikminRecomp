@@ -144,7 +144,7 @@ python3 -m recomp --dol orig/GPIP01/sys/main.dol --map orig/GPIP01/files/dataDir
       echo -DFETCHCONTENT_SOURCE_DIR_$(echo $n | tr a-z A-Z)=$D/$n-src; done)
   cmake --build build/release --target pikmin && cmake --install build/release
   ```
-  The installed copy is the Release build (about 42 MB); `build/cmake` stays the Debug dev build (about 595 MB, mostly debug info). Re-run the build and install after changes: the installed binary is a copy.
+  The installed copy is the Release build (about 69 MB, with `-g1` line tables for crash reports); `build/cmake` stays the Debug dev build (about 595 MB, mostly debug info). Re-run the build and install after changes: the installed binary is a copy.
 - **The launcher passes no arguments;** the game data comes from the installed tree (see below).
 - **Steam:** a non-Steam shortcut "Pikmin Recomp" lives in `~/.local/share/Steam/userdata/476780297/config/shortcuts.vdf` (binary VDF; appid 3992718089). Edit it only while Steam is closed (check with `ps -eo comm`, not `pgrep -f`, which matches itself). Parse and append rather than overwrite if the file has other entries.
 
