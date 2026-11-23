@@ -148,6 +148,13 @@ void reissue() {
 }  // namespace
 
 void on_set_projection(float m[16], uint32_t type) {
+    // 2D particles (EffectMgr2D) project with a camera whose frustum got the window aspect
+    // (CullFrustum::update below); in a 2D context that perspective goes back to 4:3 before the
+    // squeeze, or it and every screen drawn after it with the same port are squeezed twice.
+    if (type == 0 /*GX_PERSPECTIVE*/ && g_p2d_depth > 0 && m[0] != 0.f) {
+        const float wide = view_aspect();
+        if (wide > 4.f / 3.f + 0.001f && std::fabs(m[5] / m[0] - wide) < 0.01f) m[0] = m[5] * 0.75f;
+    }
     std::memcpy(g_proj, m, sizeof g_proj);
     g_proj_type = type;
     g_have_proj = true;
