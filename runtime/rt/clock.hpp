@@ -25,6 +25,14 @@ public:
     static constexpr uint64_t kCoarseLag = kTicksPerSec / 200;  // 5 ms, > any kernel tick
     // Fast mode: jump forward. Real mode: sleep until the host reaches `t`.
     void advance_to(uint64_t t);
+    // Exact conversions that never overflow: ns * kTicksPerSec alone passes 2^64 after ~455 s,
+    // which once wrapped the guest clock back and stalled every event (retrace, audio DMA).
+    static constexpr uint64_t ns_to_ticks(uint64_t ns) {
+        return ns / 1'000'000'000 * kTicksPerSec + ns % 1'000'000'000 * kTicksPerSec / 1'000'000'000;
+    }
+    static constexpr uint64_t ticks_to_ns(uint64_t t) {
+        return t / kTicksPerSec * 1'000'000'000 + t % kTicksPerSec * 1'000'000'000 / kTicksPerSec;
+    }
 
 private:
     Mode mode_ = Mode::Real;

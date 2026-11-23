@@ -42,8 +42,8 @@ uint64_t Clock::ticks() {
         virt_ += 40;  // ~1 us per read
         return virt_;
     }
-    int64_t ns = host_ns() - host_ns0_;
-    return base_ + static_cast<uint64_t>(ns) * kTicksPerSec / 1'000'000'000;
+    const int64_t ns = host_ns() - host_ns0_;
+    return base_ + ns_to_ticks(static_cast<uint64_t>(ns > 0 ? ns : 0));
 }
 
 uint64_t Clock::coarse_ticks() {
@@ -51,7 +51,7 @@ uint64_t Clock::coarse_ticks() {
     timespec ts;
     clock_gettime(CLOCK_MONOTONIC_COARSE, &ts);
     const int64_t ns = static_cast<int64_t>(ts.tv_sec) * 1'000'000'000 + ts.tv_nsec - host_ns0_;
-    return base_ + static_cast<uint64_t>(ns > 0 ? ns : 0) * kTicksPerSec / 1'000'000'000;
+    return base_ + ns_to_ticks(static_cast<uint64_t>(ns > 0 ? ns : 0));
 }
 
 void Clock::advance_to(uint64_t t) {
@@ -61,8 +61,7 @@ void Clock::advance_to(uint64_t t) {
     }
     uint64_t now = ticks();
     if (t > now) {
-        uint64_t ns = (t - now) * 1'000'000'000 / kTicksPerSec;
-        std::this_thread::sleep_for(std::chrono::nanoseconds(ns));
+        std::this_thread::sleep_for(std::chrono::nanoseconds(ticks_to_ns(t - now)));
     }
 }
 
