@@ -6,7 +6,7 @@
 # usage: launcher/packaging/appimage.sh [VERSION]
 set -eu
 root="$(cd "$(dirname "$0")/../.." && pwd)"
-ver="${1:-0.1.0}"
+ver="${1:-0.2.0}"
 build="$root/build/launcher-release"
 appdir="$root/build/launcher-appdir"
 tools="$root/build/tools"
