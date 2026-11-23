@@ -6,6 +6,7 @@
 #include <QObject>
 #include <QProcess>
 #include <QString>
+#include <QTimer>
 #include <QUrl>
 #include <functional>
 #include <vector>
@@ -29,7 +30,7 @@ class Launcher : public QObject {
     Q_PROPERTY(bool busy MEMBER busy_ NOTIFY changed)
     Q_PROPERTY(double progress MEMBER progress_ NOTIFY changed)
     Q_PROPERTY(QString stepText MEMBER step_text_ NOTIFY changed)
-    Q_PROPERTY(QString log MEMBER log_ NOTIFY changed)
+    Q_PROPERTY(QString log MEMBER log_ NOTIFY logChanged)
 
 public:
     explicit Launcher(QObject* parent = nullptr);
@@ -48,6 +49,8 @@ public:
 
 signals:
     void changed();
+    void logChanged();  // separate: the log changes per output line, the rest rarely
+    void toolchainChecked();  // the (asynchronous) toolchain check finished
 
 private:
     struct Step {
@@ -62,11 +65,18 @@ private:
     void check_game();
     void check_update();
     void append_log(const QString& text);
+    // Coalesces UI updates (progress, log) to ~10 per second: a build prints thousands of lines,
+    // and re-evaluating every binding per line froze the window.
+    void notify();
+    void notify_log();
+    // Runs work on a worker thread, then done on the UI thread (slow file or process work).
+    void in_background(std::function<void()> work, std::function<void()> done);
     void run_steps(std::vector<Step> steps);
     void next();
     void fail(const QString& why);
     void run_process(const QString& program, const QStringList& args, const QString& cwd);
     void download(const QUrl& url, const QString& to, std::function<void()> done);
+    void install_update(const QString& tmp);  // replace the launcher with the verified download
     QString source_dir() const;
     QString game_exe() const;
     QStringList tool_paths() const;
@@ -74,6 +84,8 @@ private:
     QProcessEnvironment build_env() const;
 
     QNetworkAccessManager net_;
+    QTimer ui_timer_;
+    bool pending_changed_ = false, pending_log_ = false, checking_toolchain_ = false;
     QProcess* proc_ = nullptr;
     QNetworkReply* reply_ = nullptr;
     std::vector<Step> steps_;

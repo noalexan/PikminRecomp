@@ -5,12 +5,11 @@
 #include <QJsonObject>
 #include <QStringList>
 
+#include "core/version.hpp"
+
 namespace launcher {
 
-std::optional<Release> parse_release(const QByteArray& json, const QString& platform) {
-    const QJsonDocument doc = QJsonDocument::fromJson(json);
-    if (!doc.isObject()) return std::nullopt;
-    const QJsonObject o = doc.object();
+static std::optional<Release> parse_one(const QJsonObject& o, const QString& platform) {
     QString tag = o.value("tag_name").toString();
     if (tag.isEmpty()) return std::nullopt;
     Release r;
@@ -28,6 +27,26 @@ std::optional<Release> parse_release(const QByteArray& json, const QString& plat
         if (w.size() == 3 && w[0] == "sha256" && w[1] == r.assetName) r.sha256 = w[2].toLower();
     }
     return r;
+}
+
+std::optional<Release> parse_release(const QByteArray& json, const QString& platform) {
+    const QJsonDocument doc = QJsonDocument::fromJson(json);
+    if (doc.isObject()) return parse_one(doc.object(), platform);
+    if (!doc.isArray()) return std::nullopt;
+    // The release list: the newest non-draft release (prereleases included) with an asset for this
+    // platform, else the newest one at all ("up to date" when it has nothing to download).
+    std::optional<Release> best, best_any;
+    for (const auto& v : doc.array()) {
+        const QJsonObject o = v.toObject();
+        if (o.value("draft").toBool()) continue;
+        const auto r = parse_one(o, platform);
+        if (!r) continue;
+        if (!best_any || compare_versions(r->version, best_any->version) > 0) best_any = r;
+        if (!r->assetUrl.isEmpty() && (!best || compare_versions(r->version, best->version) > 0)) best = r;
+    }
+    if (best) return best;
+    if (best_any) return best_any;
+    return Release{};  // no release published yet
 }
 
 QString source_archive_url(const QString& version, bool zip) {

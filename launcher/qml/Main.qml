@@ -154,7 +154,7 @@ ApplicationWindow {
                 visible: win.showLog
                 Layout.fillWidth: true; Layout.fillHeight: true
                 TextArea {
-                    readOnly: true; text: launcher.log; wrapMode: TextArea.WrapAnywhere
+                    readOnly: true; text: win.showLog ? launcher.log : ""; wrapMode: TextArea.WrapAnywhere
                     color: "#d9f5c4"; font.family: "monospace"; font.pixelSize: 11
                     background: Rectangle { color: Qt.rgba(0, 0, 0, 0.35); radius: 18 }
                     onTextChanged: cursorPosition = length

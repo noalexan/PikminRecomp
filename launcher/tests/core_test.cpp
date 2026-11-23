@@ -41,6 +41,17 @@ int main() {
     CHECK(w && w->assetUrl == "https://x/w.zip" && w->sha256.isEmpty());
     CHECK(!parse_release("{\"message\":\"API rate limit exceeded\"}", "linux"));
     CHECK(!parse_release("not json", "linux"));
+    // the release list: newest non-draft with this platform's asset, prereleases included
+    const QByteArray list = R"([
+      {"tag_name":"v0.4.0","draft":true,"assets":[{"name":"PikminRecompLauncher-0.4.0-windows.zip","browser_download_url":"https://x/d.zip"}]},
+      {"tag_name":"v0.3.0","prerelease":true,"assets":[{"name":"PikminRecompLauncher-0.3.0-windows.zip","browser_download_url":"https://x/3.zip"}]},
+      {"tag_name":"v0.2.0","assets":[{"name":"PikminRecompLauncher-0.2.0-x86_64.AppImage","browser_download_url":"https://x/2.AppImage"}]}])";
+    auto lw = parse_release(list, "windows");
+    CHECK(lw && lw->version == "0.3.0" && lw->assetUrl == "https://x/3.zip");
+    auto ll = parse_release(list, "linux");
+    CHECK(ll && ll->version == "0.2.0" && ll->assetUrl == "https://x/2.AppImage");
+    auto none = parse_release("[]", "linux");
+    CHECK(none && none->version.isEmpty());
     CHECK(source_archive_url("0.2.0", false) == "https://github.com/noalexan/PikminRecomp/archive/refs/tags/v0.2.0.tar.gz");
 
     // toolchain helpers

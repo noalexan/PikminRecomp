@@ -12,6 +12,8 @@
 #include <QNetworkReply>
 #include <QNetworkRequest>
 #include <QStandardPaths>
+#include <QThread>
+#include <memory>
 
 #include "core/paths.hpp"
 #include "core/progress.hpp"
@@ -22,7 +24,8 @@
 
 namespace launcher {
 namespace {
-constexpr const char* kLatestApi = "https://api.github.com/repos/noalexan/PikminRecomp/releases/latest";
+// The release list, not /releases/latest: that one skips prereleases.
+constexpr const char* kReleasesApi = "https://api.github.com/repos/noalexan/PikminRecomp/releases?per_page=20";
 #ifdef Q_OS_WIN
 constexpr bool kWindows = true;
 #else
@@ -39,6 +42,33 @@ Launcher::Launcher(QObject* parent) : QObject(parent) {
     // A previous self-update on Windows leaves the old executable behind.
     QFile::remove(QCoreApplication::applicationFilePath() + ".old");
     load_state();
+    ui_timer_.setSingleShot(true);
+    ui_timer_.setInterval(100);
+    connect(&ui_timer_, &QTimer::timeout, this, [this] {
+        if (pending_changed_) emit changed();
+        if (pending_log_) emit logChanged();
+        pending_changed_ = pending_log_ = false;
+    });
+}
+
+void Launcher::notify() {
+    pending_changed_ = true;
+    if (!ui_timer_.isActive()) ui_timer_.start();
+}
+
+void Launcher::notify_log() {
+    pending_log_ = true;
+    if (!ui_timer_.isActive()) ui_timer_.start();
+}
+
+void Launcher::in_background(std::function<void()> work, std::function<void()> done) {
+    QThread* t = QThread::create(std::move(work));
+    // Context object `this`: the lambda runs on the UI thread once the worker is done.
+    connect(t, &QThread::finished, this, [t, done = std::move(done)] {
+        t->deleteLater();
+        done();
+    });
+    t->start();
 }
 
 // ---- state --------------------------------------------------------------------------------------
@@ -119,19 +149,35 @@ void Launcher::check_toolchain() {
     };
     const QList<Need> needs = {{kWindows ? "g++" : "g++", "12"}, {"cmake", "3.25"}, {"ninja", ""},
                                {kWindows ? "python" : "python3", "3.11"}, {"git", ""}};
-    QStringList ok, missing;
-    for (const Need& n : needs) {
-        const Tool t = probe_tool(n.program, n.min, tool_paths());
-        if (!t.found) missing << n.program;
-        else if (t.tooOld) missing << n.program + " " + t.version + " (needs " + n.min + "+)";
-        else ok << n.program + " " + t.version;
-    }
-    toolchain_ok_ = missing.isEmpty();
-    toolchain_text_ = toolchain_ok_ ? ok.join(" · ") : "Missing: " + missing.join(", ");
-    toolchain_hint_ = toolchain_ok_ ? QString() : install_hint(detect_os());
-    if (!toolchain_ok_ && kWindows && !QFileInfo::exists(tool_paths().first()))
-        toolchain_text_ = "MSYS2 isn't installed (https://www.msys2.org). Install it, then run in its UCRT64 shell:";
+    if (checking_toolchain_) return;
+    checking_toolchain_ = true;
+    if (toolchain_text_.isEmpty()) toolchain_text_ = "Checking…";
     emit changed();
+    // Each probe runs `<tool> --version` (slow on Windows): off the UI thread.
+    struct Result {
+        QStringList ok, missing;
+    };
+    auto res = std::make_shared<Result>();
+    const QStringList paths = tool_paths();
+    in_background(
+        [needs, res, paths] {
+            for (const Need& n : needs) {
+                const Tool t = probe_tool(n.program, n.min, paths);
+                if (!t.found) res->missing << n.program;
+                else if (t.tooOld) res->missing << n.program + " " + t.version + " (needs " + n.min + "+)";
+                else res->ok << n.program + " " + t.version;
+            }
+        },
+        [this, res] {
+            checking_toolchain_ = false;
+            toolchain_ok_ = res->missing.isEmpty();
+            toolchain_text_ = toolchain_ok_ ? res->ok.join(" · ") : "Missing: " + res->missing.join(", ");
+            toolchain_hint_ = toolchain_ok_ ? QString() : install_hint(detect_os());
+            if (!toolchain_ok_ && kWindows && !QFileInfo::exists(tool_paths().first()))
+                toolchain_text_ = "MSYS2 isn't installed (https://www.msys2.org). Install it, then run in its UCRT64 shell:";
+            emit changed();
+            emit toolchainChecked();
+        });
 }
 
 void Launcher::check_rom() {
@@ -164,7 +210,7 @@ void Launcher::check_game() {
 }
 
 void Launcher::check_update() {
-    QNetworkRequest req{QUrl(kLatestApi)};
+    QNetworkRequest req{QUrl(kReleasesApi)};
     req.setHeader(QNetworkRequest::UserAgentHeader, "PikminRecompLauncher");  // GitHub requires one
     req.setRawHeader("Accept", "application/vnd.github+json");
     QNetworkReply* r = net_.get(req);
@@ -202,8 +248,8 @@ void Launcher::copyToClipboard(const QString& text) {
 
 void Launcher::append_log(const QString& text) {
     log_ += text;
-    if (log_.size() > 200000) log_ = log_.right(150000);  // keep the window responsive
-    emit changed();
+    if (log_.size() > 96000) log_ = log_.right(64000);  // the tail is what matters; layout cost grows with size
+    notify_log();
 }
 
 void Launcher::run_steps(std::vector<Step> steps) {
@@ -217,6 +263,7 @@ void Launcher::run_steps(std::vector<Step> steps) {
     progress_ = 0;
     log_.clear();
     emit changed();
+    emit logChanged();
     steps_[0].run();
 }
 
@@ -259,6 +306,7 @@ void Launcher::run_process(const QString& program, const QStringList& args, cons
             }
             append_log(line);
         }
+        notify();
     });
     connect(proc_, &QProcess::finished, this, [this, program](int code, QProcess::ExitStatus st) {
         proc_->deleteLater();
@@ -297,7 +345,7 @@ void Launcher::download(const QUrl& url, const QString& to, std::function<void()
     connect(reply_, &QNetworkReply::readyRead, this, [this, file] { file->write(reply_->readAll()); });
     connect(reply_, &QNetworkReply::downloadProgress, this, [this, base, w](qint64 got, qint64 total) {
         if (total > 0) progress_ = (base + w * double(got) / double(total)) / total_weight_;
-        emit changed();
+        notify();
     });
     connect(reply_, &QNetworkReply::finished, this, [this, file, url, done] {
         file->write(reply_->readAll());
@@ -348,8 +396,6 @@ void Launcher::build() {
                                  next();
                                  return;
                              }
-                             remove_tree(data("src-new"));
-                             QDir().mkpath(data("src-new"));
                              // Python (needed for the build anyway) unpacks the same way everywhere; MSYS2's
                              // GNU tar would read "C:/..." as a remote host.
                              static const char* kUnpack =
@@ -362,21 +408,31 @@ void Launcher::build() {
                                  "        m.name = parts[1]\n"
                                  "        try: t.extract(m, dst, filter='data')\n"
                                  "        except TypeError: t.extract(m, dst)\n";
-                             run_process(python_exe(), {"-c", kUnpack, data("src.tar.gz"), data("src-new")}, data_dir());
+                             in_background([] { remove_tree(data("src-new")); },
+                                           [this] {
+                                               if (cancelled_) return;
+                                               QDir().mkpath(data("src-new"));
+                                               run_process(python_exe(), {"-c", kUnpack, data("src.tar.gz"), data("src-new")},
+                                                           data_dir());
+                                           });
                          }});
         steps.push_back({"Installing the source", 1, [this, ver] {
-                             if (QFileInfo::exists(data("src-new"))) {
-                                 // Keep the extracted disc (orig/) across versions.
-                                 if (QFileInfo::exists(data("src/orig"))) QDir().rename(data("src/orig"), data("src-new/orig"));
-                                 remove_tree(data("src"));
+                             if (!QFileInfo::exists(data("src-new"))) {
+                                 next();
+                                 return;
+                             }
+                             // Keep the extracted disc (orig/) across versions.
+                             if (QFileInfo::exists(data("src/orig"))) QDir().rename(data("src/orig"), data("src-new/orig"));
+                             in_background([] { remove_tree(data("src")); }, [this, ver] {
+                                 if (cancelled_) return;
                                  if (!QDir().rename(data("src-new"), data("src"))) {
                                      fail("Can't replace the source folder");
                                      return;
                                  }
                                  QFile v(data("src/VERSION.launcher"));
                                  if (v.open(QIODevice::WriteOnly)) v.write(ver.toUtf8());
-                             }
-                             next();
+                                 next();
+                             });
                          }});
     }
     steps.push_back({"Extracting your disc", 8, [this, src, python] {
@@ -399,26 +455,28 @@ void Launcher::build() {
                          run_process("cmake", {"--build", build, "--target", "pikmin"}, src);
                      }});
     steps.push_back({"Installing", 2, [this, build, stage, src] {
-                         remove_tree(stage);
-                         run_process("cmake", {"--install", build}, src);
+                         in_background([stage] { remove_tree(stage); }, [this, build, src] {
+                             if (!cancelled_) run_process("cmake", {"--install", build}, src);
+                         });
                      }});
     steps.push_back({"Finishing", 1, [this, stage] {
                          // The old game stays until the new one is complete.
-                         remove_tree(data("game-old"));
-                         if (QFileInfo::exists(data("game")) && !QDir().rename(data("game"), data("game-old"))) {
-                             fail("Can't replace the installed game (is it running?)");
-                             return;
-                         }
-                         if (!QDir().rename(stage, data("game"))) {
-                             QDir().rename(data("game-old"), data("game"));
-                             fail("Can't install the new game");
-                             return;
-                         }
-                         remove_tree(data("game-old"));
-                         built_version_ = version();
-                         save_state();
-                         check_game();
-                         next();
+                         in_background([] { remove_tree(data("game-old")); }, [this, stage] {
+                             if (cancelled_) return;
+                             if (QFileInfo::exists(data("game")) && !QDir().rename(data("game"), data("game-old"))) {
+                                 fail("Can't replace the installed game (is it running?)");
+                                 return;
+                             }
+                             if (!QDir().rename(stage, data("game"))) {
+                                 QDir().rename(data("game-old"), data("game"));
+                                 fail("Can't install the new game");
+                                 return;
+                             }
+                             built_version_ = version();
+                             save_state();
+                             check_game();
+                             in_background([] { remove_tree(data("game-old")); }, [this] { next(); });
+                         });
                      }});
     step_text_ = steps.front().label;
     run_steps(std::move(steps));
@@ -437,56 +495,79 @@ void Launcher::update() {
     std::vector<Step> steps;
     steps.push_back({"Downloading the new launcher", 9, [this, tmp] { download(QUrl(release_url_), tmp, [this] { next(); }); }});
     steps.push_back({"Installing the new launcher", 1, [this, tmp] {
-                         QFile f(tmp);
-                         if (!f.open(QIODevice::ReadOnly) || (release_size_ && f.size() != release_size_)) {
-                             fail("The download is incomplete");
-                             return;
-                         }
-                         const QByteArray bytes = f.readAll();
-                         f.close();
-                         if (!release_sha_.isEmpty() &&
-                             QCryptographicHash::hash(bytes, QCryptographicHash::Sha256).toHex() != release_sha_.toLatin1()) {
-                             fail("The download doesn't match its checksum");
-                             return;
-                         }
-                         QString target;
-                         if (kWindows) {
-                             // Unpack next to the running launcher, moving the running .exe aside.
-                             const QString dir = QCoreApplication::applicationDirPath(), exe = QCoreApplication::applicationFilePath();
-                             QFile::remove(exe + ".old");
-                             QFile::rename(exe, exe + ".old");
-                             QProcess tar;  // Windows' own bsdtar (reads zip), not MSYS2's GNU tar
-                             tar.start(qEnvironmentVariable("SystemRoot", "C:/Windows") + "/System32/tar.exe",
-                                       {"-xf", tmp, "-C", dir, "--strip-components=1"});
-                             if (!tar.waitForFinished(120000) || tar.exitCode() != 0) {
-                                 QFile::rename(exe + ".old", exe);
-                                 fail("Couldn't unpack the update");
-                                 return;
-                             }
-                             target = exe;
-                         } else {
-                             target = qEnvironmentVariable("APPIMAGE");  // the AppImage file, not its read-only mount
-                             if (target.isEmpty()) {
-                                 fail("Self-update works from the AppImage; download it from the GitHub release page");
-                                 return;
-                             }
-                             QFile::remove(target + ".new");
-                             if (!QFile::rename(tmp, target + ".new")) {
-                                 QFile::copy(tmp, target + ".new");
-                             }
-                             QFile::setPermissions(target + ".new", QFile::permissions(target) | QFileDevice::ExeOwner);
-                             QFile::remove(target);
-                             if (!QFile::rename(target + ".new", target)) {
-                                 fail("Couldn't replace the launcher");
-                                 return;
-                             }
-                         }
-                         QFile::remove(tmp);
-                         QProcess::startDetached(target, {});
-                         QCoreApplication::quit();
+                         // Size and SHA-256 off the UI thread (the download is tens of MB).
+                         auto bad = std::make_shared<QString>();
+                         in_background(
+                             [tmp, bad, size = release_size_, sha = release_sha_] {
+                                 QFile f(tmp);
+                                 if (!f.open(QIODevice::ReadOnly) || (size && f.size() != size)) {
+                                     *bad = "The download is incomplete";
+                                     return;
+                                 }
+                                 QCryptographicHash h(QCryptographicHash::Sha256);
+                                 h.addData(&f);
+                                 if (!sha.isEmpty() && h.result().toHex() != sha.toLatin1())
+                                     *bad = "The download doesn't match its checksum";
+                             },
+                             [this, tmp, bad] {
+                                 if (cancelled_) return;
+                                 if (!bad->isEmpty()) fail(*bad);
+                                 else install_update(tmp);
+                             });
                      }});
     step_text_ = steps.front().label;
     run_steps(std::move(steps));
+}
+
+void Launcher::install_update(const QString& tmp) {
+    QString target;
+    if (kWindows) {
+        // Unpack next to the running launcher, moving the running .exe aside.
+        const QString dir = QCoreApplication::applicationDirPath(), exe = QCoreApplication::applicationFilePath();
+        QFile::remove(exe + ".old");
+        QFile::rename(exe, exe + ".old");
+        // Windows' own bsdtar (reads zip), not MSYS2's GNU tar; asynchronous.
+        auto* tar = new QProcess(this);
+        connect(tar, &QProcess::finished, this, [this, tar, tmp, exe](int code, QProcess::ExitStatus st) {
+            tar->deleteLater();
+            if (st != QProcess::NormalExit || code != 0) {
+                QFile::rename(exe + ".old", exe);
+                fail("Couldn't unpack the update");
+                return;
+            }
+            QFile::remove(tmp);
+            QProcess::startDetached(exe, {});
+            QCoreApplication::quit();
+        });
+        connect(tar, &QProcess::errorOccurred, this, [this, tar, exe](QProcess::ProcessError e) {
+            if (e != QProcess::FailedToStart) return;
+            tar->deleteLater();
+            QFile::rename(exe + ".old", exe);
+            fail("Couldn't start tar.exe to unpack the update");
+        });
+        tar->start(qEnvironmentVariable("SystemRoot", "C:/Windows") + "/System32/tar.exe",
+                   {"-xf", tmp, "-C", dir, "--strip-components=1"});
+        return;
+    } else {
+        target = qEnvironmentVariable("APPIMAGE");  // the AppImage file, not its read-only mount
+        if (target.isEmpty()) {
+            fail("Self-update works from the AppImage; download it from the GitHub release page");
+            return;
+        }
+        QFile::remove(target + ".new");
+        if (!QFile::rename(tmp, target + ".new")) {
+            QFile::copy(tmp, target + ".new");
+        }
+        QFile::setPermissions(target + ".new", QFile::permissions(target) | QFileDevice::ExeOwner);
+        QFile::remove(target);
+        if (!QFile::rename(target + ".new", target)) {
+            fail("Couldn't replace the launcher");
+            return;
+        }
+    }
+    QFile::remove(tmp);
+    QProcess::startDetached(target, {});
+    QCoreApplication::quit();
 }
 
 }  // namespace launcher
