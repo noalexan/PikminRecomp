@@ -260,6 +260,7 @@ void hle_CARDGetStatus(ppc_ctx* c) {
     std::memcpy(st.data(), name.data(), std::min<size_t>(name.size(), 32));
     const uint32_t len = static_cast<uint32_t>(load(path(slot, "bin")).size());
     st[0x20] = len >> 24; st[0x21] = len >> 16; st[0x22] = len >> 8; st[0x23] = static_cast<uint8_t>(len);
+    std::memcpy(&st[0x28], "GPIP01", 6);  // every file here is Pikmin's (repairs saves whose code was wiped)
     update_offsets(st);
     std::memcpy(rt::host(c, dst, kStatSize), st.data(), kStatSize);
     done(c, kReady);
@@ -269,7 +270,13 @@ void hle_CARDSetStatus(ppc_ctx* c) {
     const uint32_t slot = arg(c, 1), src = arg(c, 2);
     if (!present(arg(c, 0))) { done(c, kNoCard); return; }
     if (slot >= kMaxFiles || !exists(slot)) { done(c, kNoFile); return; }
-    std::vector<uint8_t> st(rt::host(c, src, kStatSize), rt::host(c, src, kStatSize) + kStatSize);
+    // Like the SDK, only the banner/icon/comment fields come from the caller (CARDStat 0x2E-0x3B);
+    // name, length and game code stay the file's own. Pikmin passes a stat it filled itself, so
+    // taking all of it wiped the game code and the game no longer recognised its save.
+    std::vector<uint8_t> st = load(path(slot, "stat"));
+    st.resize(kStatSize);
+    std::memcpy(&st[0x2E], rt::host(c, src + 0x2E, 0x3C - 0x2E), 0x3C - 0x2E);
+    std::memcpy(&st[0x28], "GPIP01", 6);
     const uint32_t now = static_cast<uint32_t>(rt::clock().ticks() / rt::Clock::kTicksPerSec);
     st[0x24] = now >> 24; st[0x25] = now >> 16; st[0x26] = now >> 8; st[0x27] = static_cast<uint8_t>(now);
     update_offsets(st);
