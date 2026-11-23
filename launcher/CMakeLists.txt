@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 
-find_package(Qt6 6.5 REQUIRED COMPONENTS Core Network Gui Quick QuickControls2)
+find_package(Qt6 6.5 REQUIRED COMPONENTS Core Network Gui Quick QuickControls2 QuickEffects)
 qt_standard_project_setup(REQUIRES 6.5)
 
 add_library(launcher_core STATIC
@@ -21,3 +21,10 @@ add_executable(core_test tests/core_test.cpp)
 target_link_libraries(core_test PRIVATE launcher_core)
 add_test(NAME core_test COMMAND core_test)
 set_tests_properties(core_test PROPERTIES SKIP_RETURN_CODE 77)
+
+qt_add_executable(pikmin-launcher src/main.cpp src/app/launcher.cpp)
+target_link_libraries(pikmin-launcher PRIVATE launcher_core Qt6::Network Qt6::Gui Qt6::Quick Qt6::QuickControls2)
+qt_add_qml_module(pikmin-launcher URI PikminLauncher VERSION 1.0
+    QML_FILES qml/Main.qml qml/GlassPanel.qml qml/StatusRow.qml qml/PillButton.qml qml/ForestBackground.qml)
+set_target_properties(pikmin-launcher PROPERTIES WIN32_EXECUTABLE ON)
+install(TARGETS pikmin-launcher RUNTIME DESTINATION bin)
