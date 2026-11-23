@@ -18,7 +18,10 @@ set(AURORA_DAWN_LINKAGE static CACHE STRING "" FORCE)
 if (MINGW)
     # Cross-compiling with MinGW-w64 on Linux: <Windows.h> spelled as MSVC code does, and abseil's
     # open(..., O_NONBLOCK) (MinGW has no O_NONBLOCK; the flag is meaningless for files on Windows).
-    include_directories(BEFORE SYSTEM ${CMAKE_CURRENT_LIST_DIR}/mingw-shim)
+    # Only needed on a case-sensitive host (Linux cross builds); a Windows host finds windows.h as is.
+    if (NOT CMAKE_HOST_WIN32)
+        include_directories(BEFORE SYSTEM ${CMAKE_CURRENT_LIST_DIR}/mingw-shim)
+    endif ()
     add_compile_definitions(O_NONBLOCK=0)
     # Dawn's D3D11/D3D12 backends need Windows SDK headers MinGW lacks (DXProgrammableCapture.h,
     # dxcapi...): Vulkan only.
