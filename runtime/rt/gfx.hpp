@@ -28,6 +28,12 @@ void gfx_present();
 void gfx_pump_events();
 // Capture the frame presented as present number `frame` (1-based) and write a binary PPM to `path`.
 void gfx_request_screenshot(uint32_t frame, std::string path);
+// Live settings (no-ops without a window). F11 toggles fullscreen; the callback hears about it.
+void gfx_set_fullscreen(bool on);
+bool gfx_fullscreen();
+void gfx_set_vsync(bool on);
+void gfx_set_aspect_4_3(bool on);
+void gfx_on_fullscreen_toggled(void (*cb)(bool fullscreen));
 // Closes a GXBegin left open by guest code (real implementation in the GX shims).
 void gx_close_open_draw();
 // Per-frame counters for PIKMIN_GFX_STATS=1 diagnostics.

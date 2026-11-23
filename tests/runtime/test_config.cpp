@@ -25,5 +25,14 @@ int main() {
     rt::Config def = rt::parse_config("target_fps = 144\naspect = \"auto\"\n");
     CHECK(def.target_fps == 144 && def.aspect == 0.f && def.hud_scale == 0.5f && def.modern_camera);
     CHECK(rt::parse_fps("5") == -2 && rt::parse_aspect("wide") < 0.f);
+
+    // Writer: only the edited key changes; comments, unknown keys and order are kept.
+    const std::string base = "# mine\ndisc = \"/x.iso\"  # keep\nmystery = 7\nhud_scale = 0.5\n";
+    CHECK(rt::write_config_value(base, "hud_scale", "0.7") ==
+          "# mine\ndisc = \"/x.iso\"  # keep\nmystery = 7\nhud_scale = 0.7\n");
+    CHECK(rt::write_config_value(base, "aspect", "\"4:3\"") == base + "aspect = \"4:3\"\n");
+    CHECK(rt::write_config_value(base, "disc", "\"/y.iso\"") ==
+          "# mine\ndisc = \"/y.iso\"  # keep\nmystery = 7\nhud_scale = 0.5\n");
+    CHECK(rt::write_config_value("vsync = true", "vsync", "false") == "vsync = false\n");
     return check_result();
 }

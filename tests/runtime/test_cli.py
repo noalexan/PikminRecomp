@@ -8,12 +8,12 @@ from tests.conftest import ROOT
 PIKMIN = ROOT / "build/cmake/pikmin"
 
 
-def run(args, tmp_path, env_extra=None, **kw):
+def run(args, tmp_path, env_extra=None, timeout=60, **kw):
     if not PIKMIN.exists():
         pytest.skip("pikmin executable not built")
     env = {"XDG_CONFIG_HOME": str(tmp_path / "cfg"), "HOME": str(tmp_path), "PATH": "/usr/bin:/bin"}
     env.update(env_extra or {})
-    return subprocess.run([PIKMIN, *args], capture_output=True, text=True, env=env, timeout=60, **kw)
+    return subprocess.run([PIKMIN, *args], capture_output=True, text=True, env=env, timeout=timeout, **kw)
 
 
 def test_runs_without_a_disc_image(tmp_path):

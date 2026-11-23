@@ -29,21 +29,25 @@ def play(tmp_path, script, frames):
 
 def test_menu_screens_patched(tmp_path):
     err = play(tmp_path, "", 30)
-    assert "[menu] added Settings and Quit Game to 15 menu screens" in err
+    assert "[menu] patched 20 menu screens, added 20 settings screens" in err
 
 
-def test_menu_extra_indices(tmp_path):
-    err = play(tmp_path, OPEN_MENU + down(360, 2) + "420 A\n423 -\n", 700)
-    assert "[menu] settings requested" in err
-    assert "quit requested" not in err
+def test_title_quit(tmp_path):
+    # Quit Game is the third title item; its confirmation opens on No: stick up + A = Yes.
+    err = play(tmp_path, OPEN_MENU + down(360, 2) + "420 A\n423 -\n500 - 0 127\n505 - 0 0\n540 A\n543 -\n", 700)
+    assert "[settings] quit" in err and "frame limit" not in err
 
 
-def test_menu_quit_entry(tmp_path):
-    err = play(tmp_path, OPEN_MENU + down(360, 3) + "440 A\n443 -\n", 700)
-    assert "[menu] quit requested" in err
+def test_display_setting_saved(tmp_path):
+    # Options > Display (5th item), stick right on Screen = Window, B saves.
+    script = (OPEN_MENU + down(360, 1) + "400 A\n403 -\n" + down(460, 4) + "560 A\n563 -\n"
+              "620 - 127 0\n625 - 0 0\n660 B\n663 -\n")
+    err = play(tmp_path, script, 720)
+    assert "[settings] fullscreen = false" in err
+    assert "fullscreen = false" in (tmp_path / "cfg/pikminrecomp/config.toml").read_text()
 
 
 def test_native_items_untouched(tmp_path):
     # Down once + A is still Options; nothing of ours fires.
     err = play(tmp_path, OPEN_MENU + down(360, 1) + "400 A\n403 -\n", 700)
-    assert "requested" not in err
+    assert "added item" not in err

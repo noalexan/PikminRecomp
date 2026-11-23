@@ -34,6 +34,11 @@ Jac_StartDemo = "poll"                                # now_loading
 "update__11CullFrustumFffff" = "hook"
 "__ct__Q23zen8DrawMenuFPcbb" = "hook"
 "update__Q23zen8DrawMenuFP10Controller" = "hook"
+"__ct__Q23zen13ogScrTitleMgrFv" = "hook"
+"update__Q23zen13ogScrTitleMgrFP10Controller" = "hook"
+"__ct__Q23zen13ogScrPauseMgrFv" = "hook"
+"update__Q23zen13ogScrPauseMgrFP10Controller" = "hook"
+"draw__Q23zen13ogScrPauseMgrFR8Graphics" = "hook"
 "startLoading__6SystemFP9LoadIdlerbUl" = "hook"
 "endLoading__6SystemFv" = "hook"
 # Scene breadcrumbs for crash diagnostics (hle/sections.cpp)

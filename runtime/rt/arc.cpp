@@ -1,5 +1,7 @@
 #include "rt/arc.hpp"
 
+#include <algorithm>
+
 namespace rt::arc {
 namespace {
 uint32_t rd32(const std::vector<uint8_t>& b, size_t at) {
@@ -52,6 +54,25 @@ bool replace(std::vector<uint8_t>& arc, std::vector<uint8_t>& dir, const std::st
     arc.resize((arc.size() + 31) & ~size_t{31}, 0);
     wr32(dir, e->dir_at, static_cast<uint32_t>(at));
     wr32(dir, e->dir_at + 4, static_cast<uint32_t>(arc.size() - at));
+    return true;
+}
+
+bool add(std::vector<uint8_t>& arc, std::vector<uint8_t>& dir, const std::string& name, const std::vector<uint8_t>& bytes) {
+    auto entries = parse_dir(dir);
+    if (!entries || find(*entries, name)) return false;
+    arc.resize((arc.size() + 31) & ~size_t{31}, 0);
+    const size_t at = arc.size();
+    arc.insert(arc.end(), bytes.begin(), bytes.end());
+    arc.resize((arc.size() + 31) & ~size_t{31}, 0);
+    const uint32_t name_len = static_cast<uint32_t>((name.size() + 1 + 3) & ~size_t{3});
+    const size_t rec = dir.size();
+    dir.resize(rec + 12 + name_len, 0);
+    wr32(dir, rec, static_cast<uint32_t>(at));
+    wr32(dir, rec + 4, static_cast<uint32_t>(arc.size() - at));
+    wr32(dir, rec + 8, name_len);
+    std::copy(name.begin(), name.end(), dir.begin() + static_cast<long>(rec + 12));
+    wr32(dir, 0, static_cast<uint32_t>(dir.size()));
+    wr32(dir, 4, rd32(dir, 4) + 1);
     return true;
 }
 

@@ -9,6 +9,7 @@
 #include "check.hpp"
 #include "rt/arc.hpp"
 #include "rt/blo.hpp"
+#include "enhance/settings_screens.hpp"
 
 namespace {
 const std::string kScreens = std::string(PIKMIN_SOURCE_DATA) + "/files/dataDir/screen/";
@@ -171,6 +172,34 @@ int main() {
         std::vector<uint8_t> bad(dir.begin(), dir.begin() + 30);
         CHECK(!rt::arc::parse_dir(bad).has_value());
     }
+
+    // settings_screens_all_languages
+    namespace sc = enh::screens;
+    for (const char* lang : {"eng", "fre", "ger", "ita", "spa"}) {
+        const std::string l = std::string(lang) + "_blo/";
+        // Display / Game are built from the English Sound screen in every language (English labels).
+        auto disp = sc::make_rows_screen(load("eng_blo/s_select.blo"), "Display",
+                                         {{"Screen", {"Full", "Window"}}, {"Aspect", {"Wide", "4:3"}}, {"V-sync", {"On", "Off"}}});
+        auto game = sc::make_rows_screen(load("eng_blo/s_select.blo"), "Game",
+                                         {{"FPS", {"Original", "60", "Max"}}, {"Camera", {"Modern", "Original"}}, {"HUD size", {}}});
+        CHECK(disp && game);
+        if (disp) {
+            auto all = rt::blo::all(*disp);
+            CHECK(find(all, "he00") && find(all, "he00")->text == "Screen" && find(all, "he02")->text == "V-sync");
+            CHECK(find(all, "o21t") && find(all, "o21t")->text == "Off" && find(all, "o21n") && find(all, "o21n")->visible);
+            CHECK(find(all, "titl")->text == "Display" && !find(all, "on11")->visible);
+        }
+        if (game) {
+            auto all = rt::blo::all(*game);
+            CHECK(find(all, "o02t") && find(all, "o02t")->text == "Max" && !find(all, "o20n"));
+            CHECK(find(all, "on11")->visible && find(all, "on20")->visible && !find(all, "on01")->visible);
+        }
+        auto opts = sc::make_pause_options(load(l + "option.blo"));
+        CHECK(opts && rt::blo::item_count(*opts) == 4 && find(rt::blo::all(*opts), "he03")->text == "Game");
+        auto quit = sc::make_quit_screen(load(l + "pause_ok.blo"));
+        CHECK(quit && rt::blo::item_count(*quit) == 2 && find(rt::blo::all(*quit), "titl")->text == "Quit Pikmin?");
+    }
+    CHECK(!sc::make_rows_screen(sel, "x", {{"a", {"b"}}, {"c", {"d"}}, {"e", {}}}).has_value());  // not a Sound screen
 
     // garbage_is_rejected
     std::mt19937 rng(1);

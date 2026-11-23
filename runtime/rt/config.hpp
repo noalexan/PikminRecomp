@@ -31,5 +31,10 @@ int parse_fps(const std::string& v);
 std::string default_config_path();
 // Missing file -> defaults (no error).
 Config load_config(const std::string& path);
+// `text` with `key = value` set (value already in TOML syntax, strings quoted): an existing line keeps
+// its spacing and trailing comment; a missing key is appended. Everything else is unchanged.
+std::string write_config_value(const std::string& text, const std::string& key, const std::string& value);
+// Reads `path` (missing = empty), sets the key, creates the directory and replaces the file.
+bool save_config_value(const std::string& path, const std::string& key, const std::string& value);
 
 }  // namespace rt

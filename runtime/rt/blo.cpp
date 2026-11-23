@@ -21,6 +21,8 @@ struct Record {
     int16_t x, y, w, h;
     size_t text_at = 0;  // text boxes: offset of the s16 text length
     std::string text;
+    std::string texture;  // pictures
+    bool visible = true;
 };
 
 class Reader {
@@ -49,9 +51,10 @@ public:
         return s;
     }
     void skip(size_t n) { raw(n); }
-    void resource() {  // P2DStream::getResource: u8 kind, u8 length, name (kinds 0 and 2)
+    std::string resource() {  // P2DStream::getResource: u8 kind, u8 length, name (kinds 0 and 2)
         const uint8_t kind = u8(), n = u8();
-        if (n && (kind == 0 || kind == 2)) skip(n);
+        if (n && (kind == 0 || kind == 2)) return raw(n);
+        return {};
     }
     void align() {
         const size_t a = (i_ + 3) & ~size_t{3};
@@ -86,8 +89,8 @@ bool parse_level(Reader& r, int depth, std::vector<Record>& out) {
             case 0x10:
             case 0x12:
             case 0x13: {
-                Record rec{tag, depth, begin, 0, {}, 0, 0, 0, 0, 0, {}};
-                r.u8();
+                Record rec{tag, depth, begin, 0, {}, 0, 0, 0, 0, 0, {}, {}, true};
+                rec.visible = r.u8() != 0;
                 r.u8();
                 rec.name = r.raw(4);
                 rec.x = r.s16();
@@ -95,7 +98,7 @@ bool parse_level(Reader& r, int depth, std::vector<Record>& out) {
                 rec.w = r.s16();
                 rec.h = r.s16();
                 if (tag == 0x12) {
-                    r.resource();  // texture
+                    rec.texture = r.resource();
                     r.resource();  // palette
                     r.u8();
                     r.u8();
@@ -259,12 +262,17 @@ std::optional<std::vector<uint8_t>> add_menu_items(const std::vector<uint8_t>& b
     // 1. Re-space the group (heNN absolute, hmNN and iNN[lr] relative: all move by the same amount).
     std::vector<int> dy(static_cast<size_t>(n), 0);
     for (int i = 0; i <= last; ++i) dy[static_cast<size_t>(i)] = hm0->y + i * spacing - find(recs, "hm", i)->y;
+    // heNN are top-level (absolute) except where a file keeps one inside the group (option.blo's
+    // he03), relative to `yoko` like the hmNN.
+    const Record* yoko = by_name("yoko");
+    auto nested = [&](const Record& r) { return yoko && r.depth == hm0->depth && r.begin > yoko->begin; };
+    auto abs_y = [&](const Record& r) { return nested(r) ? r.y + yoko->y : static_cast<int>(r.y); };
     int old_bottom = 0, bottom = 0;
     for (int i = 0; i < n; ++i) {
         const Record* e = find(recs, "he", i);
         if (!e) continue;
-        old_bottom = std::max(old_bottom, e->y + e->h);
-        bottom = std::max(bottom, e->y + dy[static_cast<size_t>(i)] + e->h);
+        old_bottom = std::max(old_bottom, abs_y(*e) + e->h);
+        bottom = std::max(bottom, abs_y(*e) + dy[static_cast<size_t>(i)] + e->h);
     }
 
     // 2. New items below the lowest one, cloned from the group's last item.
@@ -289,7 +297,6 @@ std::optional<std::vector<uint8_t>> add_menu_items(const std::vector<uint8_t>& b
     }
     // 3. The glass capsule: the unnamed pictures in the item group, before hm00 (m_selec2.blo grows
     //    them for its third item). They move with the group and grow downwards by `extra`.
-    const Record* yoko = by_name("yoko");
     for (const auto& r : recs) {
         if (yoko && r.tag == 0x12 && r.depth == hm0->depth && r.begin > yoko->begin && r.begin < hm0->begin &&
             r.name == std::string(4, '\0')) {
@@ -298,7 +305,7 @@ std::optional<std::vector<uint8_t>> add_menu_items(const std::vector<uint8_t>& b
     }
     // 4. Shift everything that is positioned absolutely, and the groups holding the relative ones.
     for (const auto& r : recs) {
-        const bool he = item_index(r, "he") >= 0;
+        const bool he = item_index(r, "he") >= 0 && !nested(r);  // nested ones move with the group
         const bool lone_hm = item_index(r, "hm") >= 0 && r.depth != hm0->depth;
         const bool group = r.name == "yoko" || r.name == "iall";
         const bool frame = is_frame(r);  // the light blobs behind the menu
@@ -320,9 +327,10 @@ std::optional<std::vector<uint8_t>> add_menu_items(const std::vector<uint8_t>& b
     for (int j = 0; j < added; ++j) {
         const int index = n + j;
         const int he_y = first_y + j * spacing;            // before the shift
-        const int d = he_y - he_last->y;                   // relative to the original last item
+        const int d = he_y - abs_y(*he_last);              // relative to the original last item
         add(hm_last->end, clone(out, *hm_last, item_name("hm", index), hm_last->y + d, labels[static_cast<size_t>(j)]));
-        add(he_last->end, clone(out, *he_last, item_name("he", index), he_last->y + d - up, labels[static_cast<size_t>(j)]));
+        add(he_last->end, clone(out, *he_last, item_name("he", index), he_last->y + d - (nested(*he_last) ? 0 : up),
+                                labels[static_cast<size_t>(j)]));
         for (const Record* c : {il, ir}) {
             if (!c) continue;
             std::vector<uint8_t> b(out.begin() + static_cast<long>(c->begin), out.begin() + static_cast<long>(c->end));
@@ -336,6 +344,59 @@ std::optional<std::vector<uint8_t>> add_menu_items(const std::vector<uint8_t>& b
     for (auto& [pos, b] : inserts) out.insert(out.begin() + static_cast<long>(pos), b.begin(), b.end());
     if (item_count(out) != n + added) return std::nullopt;
     return out;
+}
+
+std::vector<Item> all(const std::vector<uint8_t>& blo) {
+    std::vector<Item> out;
+    auto recs = parse(blo);
+    if (!recs) return out;
+    for (const auto& r : *recs)
+        out.push_back({r.name, r.text, r.depth, r.x, r.y, r.w, r.h, r.tag, r.texture, r.visible});
+    return out;
+}
+
+namespace {
+std::optional<Record> record_at(const std::vector<uint8_t>& blo, size_t index) {
+    auto recs = parse(blo);
+    if (!recs || index >= recs->size()) return std::nullopt;
+    return (*recs)[index];
+}
+}  // namespace
+
+bool set_text(std::vector<uint8_t>& blo, size_t index, const std::string& text) {
+    auto r = record_at(blo, index);
+    if (!r || r->tag != 0x13 || text.size() > 0x7fff) return false;
+    auto bytes = clone(blo, *r, r->name, r->y, text);
+    blo.erase(blo.begin() + static_cast<long>(r->begin), blo.begin() + static_cast<long>(r->end));
+    blo.insert(blo.begin() + static_cast<long>(r->begin), bytes.begin(), bytes.end());
+    return true;
+}
+
+bool set_visible(std::vector<uint8_t>& blo, size_t index, bool visible) {
+    auto r = record_at(blo, index);
+    if (!r) return false;
+    blo[r->begin + 2] = visible ? 1 : 0;
+    return true;
+}
+
+bool set_pos(std::vector<uint8_t>& blo, size_t index, int x, int y) {
+    auto r = record_at(blo, index);
+    if (!r) return false;
+    put16(blo, r->begin + 8, x);
+    put16(blo, r->begin + 10, y);
+    return true;
+}
+
+bool insert_clone(std::vector<uint8_t>& blo, size_t index, const std::string& name, int x, int y) {
+    auto r = record_at(blo, index);
+    if (!r || (r->tag != 0x12 && r->tag != 0x13) || name.size() != 4) return false;
+    if (r->end + 2 <= blo.size() && blo[r->end] == 0 && blo[r->end + 1] == 1) return false;  // has children
+    std::vector<uint8_t> b(blo.begin() + static_cast<long>(r->begin), blo.begin() + static_cast<long>(r->end));
+    std::memcpy(b.data() + 4, name.data(), 4);
+    put16(b, 8, x);
+    put16(b, 10, y);
+    blo.insert(blo.begin() + static_cast<long>(r->end), b.begin(), b.end());
+    return true;
 }
 
 }  // namespace rt::blo

@@ -17,8 +17,14 @@
 using rt::arg;
 using rt::ret;
 
+namespace {
+int g_open_files = 0;  // between a successful create/open and its close
+}
+
 namespace rt {
 std::string g_card_dir;  // set by main; empty = no card inserted
+// A save file is open: the game is in the middle of reading or writing it (quitting waits).
+bool card_busy() { return g_open_files > 0; }
 }
 
 namespace {
@@ -175,6 +181,7 @@ void hle_CARDCreate(ppc_ctx* c) {
     save(path(slot, "name"), name.data(), name.size());
     fill_fileinfo(c, fi, chan, slot);
     rt::log("card", "create '%s' (%u bytes) in slot %u", name.c_str(), size, slot);
+    ++g_open_files;
     done(c, kReady);
 }
 void hle_CARDOpen(ppc_ctx* c) {
@@ -184,6 +191,7 @@ void hle_CARDOpen(ppc_ctx* c) {
     const int slot = find(rt::rdstr(c, arg(c, 1), 32));
     if (slot < 0) { done(c, kNoFile); return; }
     fill_fileinfo(c, arg(c, 2), chan, static_cast<uint32_t>(slot));
+    ++g_open_files;
     done(c, kReady);
 }
 void hle_CARDFastOpen(ppc_ctx* c) {
@@ -192,9 +200,14 @@ void hle_CARDFastOpen(ppc_ctx* c) {
     if (!present(chan)) { done(c, kNoCard); return; }
     if (slot >= kMaxFiles || !exists(slot)) { done(c, kNoFile); return; }
     fill_fileinfo(c, arg(c, 2), chan, slot);
+    ++g_open_files;
     done(c, kReady);
 }
-void hle_CARDClose(ppc_ctx* c) { HLE_ENTRY(c, "CARDClose"); done(c, kReady); }
+void hle_CARDClose(ppc_ctx* c) {
+    HLE_ENTRY(c, "CARDClose");
+    if (g_open_files > 0) --g_open_files;
+    done(c, kReady);
+}
 void hle_CARDRead(ppc_ctx* c) {
     HLE_ENTRY(c, "CARDRead");
     const uint32_t fi = arg(c, 0), addr = arg(c, 1), len = arg(c, 2), off = arg(c, 3);

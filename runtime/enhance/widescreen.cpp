@@ -38,7 +38,6 @@ __attribute__((weak)) void f_801b7124_orig(ppc_ctx* c);  // zen::DrawGameInfo::d
 __attribute__((weak)) void f_80066ac4_orig(ppc_ctx* c);  // MapMgr::postrefresh(Graphics&)
 __attribute__((weak)) void f_80044210_orig(ppc_ctx* c);  // Texture::grabBuffer(w, h, bool, bool)
 __attribute__((weak)) void f_801e8300_orig(ppc_ctx* c);  // zen::EffectMgr2D::draw(Graphics&)
-__attribute__((weak)) void f_801806c8_orig(ppc_ctx* c);  // zen::ogScrTitleMgr::draw(Graphics&)
 __attribute__((weak)) void f_801973e8_orig(ppc_ctx* c);  // zen::ogScrStartMgr::draw(Graphics&)
 __attribute__((weak)) void f_8018a150_orig(ppc_ctx* c);  // zen::ogScrFileSelectMgr::draw(Graphics&)
 __attribute__((weak)) void f_80192028_orig(ppc_ctx* c);  // zen::ogScrFileChkSelMgr::draw(Graphics&)
@@ -381,7 +380,7 @@ void clipped_menu(ppc_ctx* c, void (*orig)(ppc_ctx*)) {
 
 void hle_draw__Q23zen13ogScrTitleMgrFR8Graphics(ppc_ctx* c) {
     HLE_ENTRY(c, "zen::ogScrTitleMgr::draw");
-    clipped_menu(c, f_801806c8_orig);
+    clipped_menu(c, enh::title_draw);  // the game's draw, or our settings screens (settings_menu.cpp)
 }
 
 void hle_draw__Q23zen13ogScrStartMgrFR8Graphics(ppc_ctx* c) {

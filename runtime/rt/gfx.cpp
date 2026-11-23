@@ -13,6 +13,7 @@
 #include <aurora/input.hpp>
 #include <dolphin/gx.h>
 #include <dolphin/gx/GXAurora.h>
+#include <SDL3/SDL_keyboard.h>
 #include <SDL3/SDL_video.h>
 #endif
 
@@ -38,6 +39,11 @@ int gfx_display_refresh() { return 0; }
 void gfx_present() {}
 void gfx_pump_events() {}
 void gfx_request_screenshot(uint32_t, std::string) {}
+void gfx_set_fullscreen(bool) {}
+bool gfx_fullscreen() { return false; }
+void gfx_set_vsync(bool) {}
+void gfx_set_aspect_4_3(bool) {}
+void gfx_on_fullscreen_toggled(void (*)(bool)) {}
 #else
 
 namespace {
@@ -47,6 +53,7 @@ uint32_t g_presents = 0;
 bool g_init_failed = false;
 bool g_in_frame = false;
 uint32_t g_begin_failures = 0;
+void (*g_fullscreen_cb)(bool) = nullptr;
 
 struct Screenshot {
     uint32_t frame = 0;
@@ -194,6 +201,26 @@ void gfx_pump_events() {
     }
 }
 
+void gfx_set_fullscreen(bool on) {
+    if (!g_active || g_offscreen) return;
+    if (SDL_Window* win = aurora_get_window()) SDL_SetWindowFullscreen(win, on);
+}
+
+bool gfx_fullscreen() {
+    SDL_Window* win = g_active && !g_offscreen ? aurora_get_window() : nullptr;
+    return win && (SDL_GetWindowFlags(win) & SDL_WINDOW_FULLSCREEN);
+}
+
+void gfx_set_vsync(bool on) {
+    if (g_active && !g_offscreen) aurora_enable_vsync(on);
+}
+
+void gfx_set_aspect_4_3(bool on) {
+    if (g_active) AuroraSetViewportPolicy(on ? AURORA_VIEWPORT_FIT : AURORA_VIEWPORT_STRETCH);
+}
+
+void gfx_on_fullscreen_toggled(void (*cb)(bool)) { g_fullscreen_cb = cb; }
+
 void gfx_request_screenshot(uint32_t frame, std::string path) {
     g_shot.frame = frame;
     g_shot.path = std::move(path);
@@ -226,6 +253,11 @@ void gfx_present() {
         if (ev->type == AURORA_EXIT) {
             log("gfx", "window closed");
             exit_process(0);
+        }
+        if (ev->type == AURORA_SDL_EVENT && ev->sdl.type == SDL_EVENT_KEY_DOWN && ev->sdl.key.key == SDLK_F11 &&
+            !ev->sdl.key.repeat) {
+            gfx_set_fullscreen(!gfx_fullscreen());
+            if (g_fullscreen_cb) g_fullscreen_cb(gfx_fullscreen());
         }
     }
     g_in_frame = aurora_begin_frame();  // false while minimised/pending: keep running, game time must not stall

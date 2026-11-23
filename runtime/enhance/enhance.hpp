@@ -22,8 +22,12 @@ Settings& settings();
 
 // Effective aspect ratio of the 3D view (window aspect, or 4/3).
 float view_aspect();
-// Adds Settings / Quit Game to the title and pause menu screens (enhance/menu_entries.cpp).
+// Adds Quit Game / Options items and the settings screens to the game's menus (enhance/menu_entries.cpp).
 void install_menu_entries();
+// The added item (0 = first) a patched DrawMenu finished on since the last call, or -1.
+int take_menu_choice(uint32_t menu);
+// ogScrTitleMgr::draw: the original, or our Display / Game / Quit screen (enhance/settings_menu.cpp).
+void title_draw(ppc_ctx* c);
 // Game frames per second in the unlocked mode (target_fps or the display refresh).
 int effective_fps();
 inline bool original_timing() { return settings().target_fps < 0; }

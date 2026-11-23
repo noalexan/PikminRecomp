@@ -21,4 +21,8 @@ const Entry* find(const std::vector<Entry>& entries, const std::string& name);
 bool replace(std::vector<uint8_t>& arc, std::vector<uint8_t>& dir, const std::string& name,
              const std::vector<uint8_t>& bytes);
 
+// Appends `bytes` (padded to 32) to the archive under a new name (the .dir's size and count grow).
+// False if the name is already there or the .dir doesn't parse.
+bool add(std::vector<uint8_t>& arc, std::vector<uint8_t>& dir, const std::string& name, const std::vector<uint8_t>& bytes);
+
 }  // namespace rt::arc

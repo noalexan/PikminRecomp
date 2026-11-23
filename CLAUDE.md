@@ -109,6 +109,11 @@ python3 -m recomp --dol orig/GPIP01/sys/main.dol --map orig/GPIP01/files/dataDir
 - **Frame rate:** the game loop runs at the display refresh (240 fps with vsync). The frame time is scaled by 0.833 to match PAL gameplay speed (25 fps capped at 1/30 s). Cutscenes and camera smoothing are converted to original-frame units. The 50 Hz retrace still drives input scripts and screenshots.
 - **Boot logo:** in real-time runs the boot loads (`System::endLoading` hook) end no sooner than 3 s after the first one starts, so the red Nintendo logo stays up about as long as it did from a real disc. `--fast` keeps the original timeline.
 - **Camera:** right stick orbits and tilts (elevation 8–82°); L1 + right stick swarms; keyboard arrows = camera, Left Shift + arrows = swarm.
+- **In-game settings and quit** (no ImGui; drawn by the game's own `zen::DrawMenu`):
+  - Title menu: Start / Options / (Challenge Mode) / **Quit Game**. Options adds **Display** (Screen, Aspect, V-sync) and **Game** (FPS, Camera, HUD size). Pause menu adds **Options** (Sound, Rumble, Display, Game) and **Quit Game**. Quit asks "Quit Pikmin?" (No by default) and waits for an open memory-card file.
+  - Screens are made at boot in memory (`enhance/menu_entries.cpp`, `enhance/settings_screens.cpp`, `rt::blo` edits, `rt::arc::add`): patched `m_select`/`m_selec2`/`pause`/`option.blo` and new `x_disp`/`x_game` (from the English Sound screen), `x_popt`, `x_quit` in every `blo__<lang>.arc`.
+  - `enhance/settings_menu.cpp` hooks `ogScrTitleMgr` (ctor/update; draw via `enh::title_draw` from the widescreen hook) and `ogScrPauseMgr` (ctor/update/draw). The `DrawMenu::update` hook hides added items from the game (`enh::take_menu_choice`). Values apply live and changed keys are written to `config.toml` (`ui/settings.cpp`, `rt::save_config_value`).
+  - **F11** toggles fullscreen (saved). **Esc** and the DS4 touchpad act as Start.
 - **Config / CLI:** `aspect` (`auto`|`4:3`), `target_fps` (`auto`|`original`|N), `hud_scale`, `camera` (`modern`|`original`); flags `--aspect --target-fps --hud-scale --camera`. `--headless` defaults to original timing. `PIKMIN_TIMING=1`, `PIKMIN_HUD_DUMP=1`.
 - **Clock:** safe points read `CLOCK_MONOTONIC_COARSE` and the precise clock only when an event is within 5 ms. This laptop's clock source is HPET, which made precise reads cap the loop at about 85 fps.
 

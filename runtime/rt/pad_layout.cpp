@@ -34,7 +34,7 @@ Binding axis(SDL_GamepadAxis ax, Dir dir, const char* control, float scale = 1.f
 }  // namespace
 
 // WASD stick, arrow keys = right stick (camera; with Left Shift held: C-stick swarming),
-// J/K/L/I = A/B/X/Y, U = Z, Q/E = L/R, Enter = Start, T/G/F/H = D-pad.
+// J/K/L/I = A/B/X/Y, U = Z, Q/E = L/R, Enter / Esc = Start, T/G/F/H = D-pad.
 std::vector<Binding> default_keyboard_bindings() {
     return {
         key(SDL_SCANCODE_W, "aurora.pad.left_y", 1.f),     key(SDL_SCANCODE_S, "aurora.pad.left_y", -1.f),
@@ -46,7 +46,7 @@ std::vector<Binding> default_keyboard_bindings() {
         key(SDL_SCANCODE_U, "aurora.pad.z"),
         key(SDL_SCANCODE_Q, "aurora.pad.l"),               key(SDL_SCANCODE_Q, "aurora.pad.trigger_l"),
         key(SDL_SCANCODE_E, "aurora.pad.r"),               key(SDL_SCANCODE_E, "aurora.pad.trigger_r"),
-        key(SDL_SCANCODE_RETURN, "aurora.pad.start"),
+        key(SDL_SCANCODE_RETURN, "aurora.pad.start"),     key(SDL_SCANCODE_ESCAPE, "aurora.pad.start"),
         key(SDL_SCANCODE_LSHIFT, "aurora.pad.ext.misc1"),  // swarm modifier (see enhance/camera.cpp)
         key(SDL_SCANCODE_T, "aurora.pad.up"),              key(SDL_SCANCODE_G, "aurora.pad.down"),
         key(SDL_SCANCODE_F, "aurora.pad.left"),            key(SDL_SCANCODE_H, "aurora.pad.right"),
@@ -54,7 +54,7 @@ std::vector<Binding> default_keyboard_bindings() {
 }
 
 // Positional layout (as on the GameCube pad, and as Dolphin maps it): Cross/South = A, Square/West = B,
-// Circle/East = X, Triangle/North = Y, R1 = Z, L2/R2 = analog L/R, Options = Start.
+// Circle/East = X, Triangle/North = Y, R1 = Z, L2/R2 = analog L/R, Options / touchpad = Start.
 // Right stick = camera (modern camera); L1 + right stick = C-stick (swarming).
 // SDL's Y axes point down; the GameCube's point up.
 std::vector<Binding> default_controller_bindings() {
@@ -66,6 +66,7 @@ std::vector<Binding> default_controller_bindings() {
         button(SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, "aurora.pad.z"),
         button(SDL_GAMEPAD_BUTTON_LEFT_SHOULDER, "aurora.pad.ext.misc1"),  // swarm modifier
         button(SDL_GAMEPAD_BUTTON_START, "aurora.pad.start"),
+        button(SDL_GAMEPAD_BUTTON_TOUCHPAD, "aurora.pad.start"),
         button(SDL_GAMEPAD_BUTTON_DPAD_UP, "aurora.pad.up"),
         button(SDL_GAMEPAD_BUTTON_DPAD_DOWN, "aurora.pad.down"),
         button(SDL_GAMEPAD_BUTTON_DPAD_LEFT, "aurora.pad.left"),

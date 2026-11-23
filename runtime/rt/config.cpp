@@ -1,6 +1,7 @@
 #include "rt/config.hpp"
 
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 
@@ -116,6 +117,56 @@ Config load_config(const std::string& path) {
     std::stringstream ss;
     ss << f.rdbuf();
     return parse_config(ss.str());
+}
+
+std::string write_config_value(const std::string& text, const std::string& key, const std::string& value) {
+    std::string out;
+    bool done = false;
+    size_t i = 0;
+    while (i < text.size()) {
+        size_t nl = text.find('\n', i);
+        std::string line = text.substr(i, nl == std::string::npos ? std::string::npos : nl - i);
+        i = nl == std::string::npos ? text.size() : nl + 1;
+        const size_t eq = line.find('=');
+        if (!done && eq != std::string::npos && line.find('#') > eq && trim(line.substr(0, eq)) == key) {
+            // Keep "key = " as written and anything from the comment on (with the spaces before it).
+            size_t v = eq + 1;
+            while (v < line.size() && line[v] == ' ') ++v;
+            size_t tail = line.size();
+            bool in_str = false;
+            for (size_t k = v; k < line.size(); ++k) {
+                if (line[k] == '"') in_str = !in_str;
+                if (line[k] == '#' && !in_str) {
+                    tail = k;
+                    while (tail > v && line[tail - 1] == ' ') --tail;
+                    break;
+                }
+            }
+            line = line.substr(0, v) + value + line.substr(tail);
+            done = true;
+        }
+        out += line + "\n";
+    }
+    if (!done) out += key + " = " + value + "\n";
+    return out;
+}
+
+bool save_config_value(const std::string& path, const std::string& key, const std::string& value) {
+    std::string text;
+    if (std::ifstream f(path); f) {
+        std::stringstream ss;
+        ss << f.rdbuf();
+        text = ss.str();
+    }
+    std::error_code ec;
+    std::filesystem::create_directories(std::filesystem::path(path).parent_path(), ec);
+    const std::string tmp = path + ".tmp";
+    {
+        std::ofstream f(tmp, std::ios::trunc);
+        if (!(f << write_config_value(text, key, value))) return false;
+    }
+    std::filesystem::rename(tmp, path, ec);
+    return !ec;
 }
 
 }  // namespace rt

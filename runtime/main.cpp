@@ -24,6 +24,7 @@
 #include "rt/crash.hpp"
 #include "rt/diag.hpp"
 #include "rt/trace.hpp"
+#include "ui/settings.hpp"
 #include "rt/disc.hpp"
 #include "rt/gfx.hpp"
 #include "rt/input_record.hpp"
@@ -256,6 +257,7 @@ int main(int argc, char** argv) {
     } else if (!shot_path.empty()) {
         fail("--screenshot needs graphics (drop --headless, or use --offscreen)");
     }
+    ui::init(config_path, cfg.fullscreen, cfg.vsync, !headless && !offscreen);
 
     static ppc_ctx ctx{};
     ctx.mem = ram.data();
