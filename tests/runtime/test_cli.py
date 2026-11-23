@@ -8,10 +8,11 @@ from tests.conftest import ROOT
 PIKMIN = ROOT / "build/cmake/pikmin"
 
 
-def run(args, tmp_path, **kw):
+def run(args, tmp_path, env_extra=None, **kw):
     if not PIKMIN.exists():
         pytest.skip("pikmin executable not built")
     env = {"XDG_CONFIG_HOME": str(tmp_path / "cfg"), "HOME": str(tmp_path), "PATH": "/usr/bin:/bin"}
+    env.update(env_extra or {})
     return subprocess.run([PIKMIN, *args], capture_output=True, text=True, env=env, timeout=60, **kw)
 
 
@@ -23,6 +24,31 @@ def test_runs_without_a_disc_image(tmp_path):
     r = run(["--headless", "--fast", "--frames", "60"], tmp_path)
     assert r.returncode == 0, r.stderr
     assert "orig/GPIP01" in r.stderr
+
+
+def test_run_writes_log_file(tmp_path):
+    if not (ROOT / "orig/GPIP01/sys/paths.txt").exists():
+        pytest.skip("extracted game data not available")
+    r = run(["--headless", "--fast", "--frames", "60"], tmp_path, {"XDG_STATE_HOME": str(tmp_path / "state")})
+    assert r.returncode == 0, r.stderr
+    logs = list((tmp_path / "state/pikminrecomp/logs").glob("pikmin-*.log"))
+    assert len(logs) == 1
+    text = logs[0].read_text()
+    assert "[run] pikmin " in text
+    assert "(Debug)" in text or "(Release)" in text
+    assert "clock: fast" in text
+    assert "[boot]" in text
+
+
+def test_log_dir_unwritable_still_runs(tmp_path):
+    if not (ROOT / "orig/GPIP01/sys/paths.txt").exists():
+        pytest.skip("extracted game data not available")
+    blocker = tmp_path / "state"
+    blocker.write_text("")  # a file where the directory should be
+    r = run(["--headless", "--fast", "--frames", "30"], tmp_path, {"XDG_STATE_HOME": str(blocker)})
+    assert r.returncode == 0, r.stderr
+    assert "cannot create log directory" in r.stderr
+    assert "[boot]" in r.stderr
 
 
 def test_non_gamecube_file_is_one_line_error(tmp_path):

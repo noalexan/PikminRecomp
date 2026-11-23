@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <string>
 
+#include "rt/trace.hpp"
+
 extern "C" {
 #include "memory.h"
 #include "ppc.h"
@@ -61,5 +63,6 @@ void safe_point();
     do {                                          \
         ::rt::current_function.name = (fname);    \
         ::rt::current_function.lr = (c)->lr;      \
+        ::rt::trace(::rt::Ev::Hle, (fname), (c)->lr); \
         ::rt::safe_point();                       \
     } while (0)

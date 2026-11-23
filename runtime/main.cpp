@@ -21,6 +21,8 @@
 #include "rt/boot.hpp"
 #include "rt/clock.hpp"
 #include "rt/config.hpp"
+#include "rt/diag.hpp"
+#include "rt/trace.hpp"
 #include "rt/disc.hpp"
 #include "rt/gfx.hpp"
 #include "rt/input_script.hpp"
@@ -37,7 +39,7 @@ void vi_set_frame_limit(uint32_t n);
 namespace {
 
 [[noreturn]] void fail(const std::string& msg) {
-    std::fprintf(stderr, "pikmin: %s\n", msg.c_str());
+    rt::log_raw("pikmin: %s", msg.c_str());
     std::exit(2);
 }
 
@@ -112,6 +114,26 @@ void start_watchdog(int seconds) {
             }
         }
     }).detach();
+}
+
+// Opens this run's log file and writes its header: build, command line, settings, mode and clock.
+void open_run_log(int argc, char** argv, const rt::Config& cfg, const enh::Settings& es, const std::string& disc_path,
+                  const char* mode, bool fast) {
+    rt::log_open(rt::log_dir());
+    rt::trace_init();
+    std::string cmd;
+    for (int i = 0; i < argc; ++i) cmd += (i ? " " : "") + std::string(argv[i]);
+    rt::log_file_only("run", "pikmin %s (%s)", rt::kBuildHash, rt::kBuildType);
+    rt::log_file_only("run", "command: %s", cmd.c_str());
+    rt::log_file_only("run", "mode: %s, clock: %s", mode, fast ? "fast" : "real-time");
+    rt::log_file_only("run", "disc: %s", disc_path.c_str());
+    rt::log_file_only("run", "config: language=%d window=%dx%d fullscreen=%d vsync=%d audio=%d", cfg.language,
+                      cfg.window_width, cfg.window_height, cfg.fullscreen, cfg.vsync, cfg.audio);
+    rt::log_file_only("run", "enhancements: aspect=%s target_fps=%d hud_scale=%.2f camera=%s",
+                      es.aspect > 0.f ? "4:3" : "auto", es.target_fps, es.hud_scale,
+                      es.modern_camera ? "modern" : "original");
+    for (auto& w : cfg.warnings) rt::log_file_only("config", "%s", w.c_str());
+    rt::log_file_only("run", "log file: %s", rt::log_path().c_str());
 }
 
 }  // namespace
@@ -193,6 +215,8 @@ int main(int argc, char** argv) {
     }
     // Headless runs have nothing to show: keep the original pacing unless asked otherwise.
     if (headless && fps_arg.empty()) es.target_fps = -1;
+
+    open_run_log(argc, argv, cfg, es, disc_path, headless ? "headless" : offscreen ? "offscreen" : "window", fast);
 
     std::unique_ptr<rt::Disc> disc;
     try {

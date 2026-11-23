@@ -153,6 +153,7 @@ void Scheduler::switch_to(GuestThread* t) {
     }
     t->state = GuestThread::Running;
     t->started = true;
+    trace(Ev::Thread, "switch", old->ea, t->ea);
     current_ = t;
     write_guest(t);
     swapcontext(&old->uc, &t->uc);
@@ -244,7 +245,7 @@ void Scheduler::exit_current(uint32_t value) {
     write_guest(t);
     wakeup(t->ea + 1);  // join waiters sleep on ea+1 (queue addresses are 4-aligned)
     reschedule();
-    std::fprintf(stderr, "exit_current: moribund thread resumed\n");
+    log("sched", "exit_current: moribund thread resumed");
     std::abort();
 }
 

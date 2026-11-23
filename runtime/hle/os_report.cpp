@@ -2,7 +2,9 @@
 #include <cstdio>
 #include <cstdlib>
 
+#include "rt/diag.hpp"
 #include "rt/format.hpp"
+#include "rt/log.hpp"
 #include "rt/guest.hpp"
 
 extern "C" void hle_OSReport(ppc_ctx* c) {
@@ -10,6 +12,7 @@ extern "C" void hle_OSReport(ppc_ctx* c) {
     std::string s = rt::guest_format(c, rt::arg(c, 0), 4, 1);
     std::fwrite(s.data(), 1, s.size(), stdout);
     std::fflush(stdout);
+    rt::diag_write_file(s.data(), s.size());  // guest output belongs in the run log too
 }
 
 extern "C" void hle_OSPanic(ppc_ctx* c) {
@@ -17,6 +20,6 @@ extern "C" void hle_OSPanic(ppc_ctx* c) {
     std::string file = rt::rdstr(c, rt::arg(c, 0));
     uint32_t line = rt::arg(c, 1);
     std::string msg = rt::guest_format(c, rt::arg(c, 2), 6, 1);
-    std::fprintf(stderr, "OSPanic at %s:%u: %s\n", file.c_str(), line, msg.c_str());
+    rt::log("OSPanic", "%s:%u: %s", file.c_str(), line, msg.c_str());
     std::abort();
 }

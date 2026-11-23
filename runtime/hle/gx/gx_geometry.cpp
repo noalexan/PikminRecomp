@@ -89,6 +89,7 @@ void hle_GXLoadTexObj(ppc_ctx* c) {
 
 void hle_GXCopyDisp(ppc_ctx* c) {
     GX_SHIM(c, "GXCopyDisp");
+    rt::trace(rt::Ev::Frame, "copydisp", rt::g_trace_retrace);
     static int n = 0;
     if (std::getenv("PIKMIN_GFX_TRACE") && n++ < 5) rt::log("gxtrace", "GXCopyDisp(%08x, %u)", arg(c, 0), arg(c, 1));
     GXCopyDisp(host_ptr(c, arg(c, 0)), GXBool(arg(c, 1)));

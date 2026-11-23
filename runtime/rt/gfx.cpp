@@ -58,10 +58,11 @@ struct Screenshot {
 
 void aurora_log(AuroraLogLevel level, const char* module, const char* msg, unsigned int) {
     if (level >= LOG_WARNING) log("aurora", "%s %s: %s", level >= LOG_ERROR ? "ERROR" : "warning", module, msg);
+    else if (level == LOG_INFO) log_file_only("aurora", "%s: %s", module, msg);  // adapter, backend, ...
     if (level == LOG_FATAL) {
         if (!g_active) {
             // Fatal during initialisation: report it as "no usable GPU" instead of aborting.
-            std::fprintf(stderr, "pikmin: no usable GPU (%s); try --headless\n", msg);
+            log_raw("pikmin: no usable GPU (%s); try --headless", msg);
             exit_process(2);
         }
         exit_process(134);
@@ -121,7 +122,7 @@ bool gfx_init(const GfxOptions& opt) {
     AuroraInfo info = aurora_initialize(0, nullptr, &cfg);
     if (info.backend == BACKEND_NULL) {
         g_init_failed = true;
-        std::fprintf(stderr, "pikmin: no usable GPU (no Vulkan adapter); try --headless\n");
+        log_raw("pikmin: no usable GPU (no Vulkan adapter); try --headless");
         return false;
     }
     if (opt.guest_ram_end) AuroraSetUnknownArrayLimit(opt.guest_ram_end);
@@ -133,6 +134,14 @@ bool gfx_init(const GfxOptions& opt) {
     aurora_update();
     g_in_frame = aurora_begin_frame();
     log("gfx", "graphics ready (%ux%u%s)", opt.width, opt.height, opt.headless_surface ? ", offscreen" : "");
+    if (!opt.headless_surface) {
+        SDL_Window* win = aurora_get_window();
+        SDL_DisplayID id = win ? SDL_GetDisplayForWindow(win) : SDL_GetPrimaryDisplay();
+        if (const SDL_DisplayMode* mode = id ? SDL_GetCurrentDisplayMode(id) : nullptr) {
+            log_file_only("gfx", "display %dx%d @ %.2f Hz (scale %.2f)", mode->w, mode->h, mode->refresh_rate,
+                          mode->pixel_density);
+        }
+    }
     return true;
 }
 

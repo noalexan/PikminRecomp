@@ -58,11 +58,13 @@ void hle_DVDOpen(ppc_ctx* c) {
         return;
     }
     rt::log("dvd", "open %s", path.c_str());
+    rt::trace(rt::Ev::Dvd, "open", static_cast<uint32_t>(entry), 0, path.c_str());
     ret(c, 1);
 }
 
 void hle_DVDFastOpen(ppc_ctx* c) {
     HLE_ENTRY(c, "DVDFastOpen");
+    rt::trace(rt::Ev::Dvd, "fastopen", arg(c, 0));
     ret(c, fill_file_info(c, static_cast<int32_t>(arg(c, 0)), arg(c, 1)));
 }
 
@@ -82,6 +84,7 @@ void hle_DVDClose(ppc_ctx* c) {
 void hle_DVDReadPrio(ppc_ctx* c) {
     HLE_ENTRY(c, "DVDReadPrio");
     uint32_t fi = arg(c, 0), addr = arg(c, 1), len = arg(c, 2), offset = arg(c, 3);
+    rt::trace(rt::Ev::Dvd, "read", offset, len);
     uint32_t n = read_into(c, fi, addr, len, offset);
     // A synchronous read blocks the calling thread on the GameCube, letting lower-priority threads
     // run meanwhile. JAudio depends on that: its DVD thread (higher priority than the game) runs a
@@ -93,6 +96,7 @@ void hle_DVDReadPrio(ppc_ctx* c) {
 void hle_DVDReadAsyncPrio(ppc_ctx* c) {
     HLE_ENTRY(c, "DVDReadAsyncPrio");
     uint32_t fi = arg(c, 0), addr = arg(c, 1), len = arg(c, 2), offset = arg(c, 3), cb = arg(c, 4);
+    rt::trace(rt::Ev::Dvd, "read_async", offset, len);
     wr32(c, fi + kCbState, 1);
     wr32(c, fi + kCbOffset, offset);
     wr32(c, fi + kCbLength, len);

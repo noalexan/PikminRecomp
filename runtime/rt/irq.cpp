@@ -65,6 +65,7 @@ void Irq::run_queue() {
         queue_.pop_front();
         ctx_.r[1] = kStackTop;
         if (t) t->irq_on = false;
+        trace(Ev::Irq, "callback", t ? t->ea : 0);
         cb(&ctx_);
     }
     if (t) t->irq_on = saved;

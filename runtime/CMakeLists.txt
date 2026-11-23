@@ -17,3 +17,20 @@ if (PIKMIN_GRAPHICS)
     # mmio.cpp feeds aurora's FIFO directly (internal header; aurora is pinned).
     target_include_directories(pikmin_rt PRIVATE ${aurora_SOURCE_DIR}/lib ${aurora_SOURCE_DIR}/include)
 endif ()
+
+# Build identification for logs and crash reports: the git hash is re-read on every build.
+set(PIKMIN_BUILD_INFO ${CMAKE_CURRENT_BINARY_DIR}/build_info.cpp)
+add_custom_target(pikmin_build_info
+    COMMAND ${CMAKE_COMMAND} -DSRC=${CMAKE_SOURCE_DIR} -DIN=${CMAKE_CURRENT_SOURCE_DIR}/rt/build_info.cpp.in
+            -DOUT=${PIKMIN_BUILD_INFO} -P ${CMAKE_CURRENT_SOURCE_DIR}/write_build_info.cmake
+    BYPRODUCTS ${PIKMIN_BUILD_INFO}
+    VERBATIM)
+target_sources(pikmin_rt PRIVATE ${PIKMIN_BUILD_INFO})
+add_dependencies(pikmin_rt pikmin_build_info)
+if (CMAKE_BUILD_TYPE)
+    set(PIKMIN_BUILD_TYPE ${CMAKE_BUILD_TYPE})
+else ()
+    set(PIKMIN_BUILD_TYPE Debug)
+endif ()
+set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/rt/diag.cpp PROPERTIES
+    COMPILE_DEFINITIONS PIKMIN_BUILD_TYPE="${PIKMIN_BUILD_TYPE}")
