@@ -1,8 +1,5 @@
 #include "rt/sched.hpp"
 
-#include <sys/mman.h>
-#include <unistd.h>
-
 #include <cstdio>
 #include <cstdlib>
 
@@ -17,7 +14,7 @@ constexpr uint16_t kOsReady = 1, kOsRunning = 2, kOsWaiting = 4, kOsMoribund = 8
 }  // namespace
 
 GuestThread::~GuestThread() {
-    if (stack) munmap(stack, stack_size);
+    fiber_destroy(fiber);  // ignores the thread fiber
 }
 
 Scheduler& sched() {
@@ -35,6 +32,7 @@ void Scheduler::init(ppc_ctx* main_ctx, uint32_t main_thread_ea) {
     main->suspend = 0;
     main->started = true;
     main->ctx = main_ctx;
+    main->fiber = fiber_current_thread();
     current_ = main.get();
     threads_.push_back(std::move(main));
     next_seq_ = 1;
@@ -66,19 +64,7 @@ GuestThread* Scheduler::create(uint32_t thread_ea, uint32_t entry, uint32_t para
     t->ctx->lr = 0;
     wr32(t->ctx, t->ctx->r[1], 0);  // back chain terminator
 
-    const size_t page = static_cast<size_t>(sysconf(_SC_PAGESIZE));
-    t->stack_size = kHostStack + page;
-    t->stack = mmap(nullptr, t->stack_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0);
-    if (t->stack == MAP_FAILED) {
-        std::perror("mmap thread stack");
-        std::abort();
-    }
-    mprotect(t->stack, page, PROT_NONE);  // guard page below the stack
-    getcontext(&t->uc);
-    t->uc.uc_stack.ss_sp = t->stack;
-    t->uc.uc_stack.ss_size = t->stack_size;
-    t->uc.uc_link = nullptr;
-    makecontext(&t->uc, fiber_main, 0);
+    t->fiber = fiber_create(kHostStack, fiber_main);
 
     // A new thread on a struct used before replaces the old entry (System::startLoading reuses one).
     for (auto it = threads_.begin(); it != threads_.end();) {
@@ -156,15 +142,15 @@ void Scheduler::switch_to(GuestThread* t) {
     trace(Ev::Thread, "switch", old->ea, t->ea);
     current_ = t;
     write_guest(t);
-    swapcontext(&old->uc, &t->uc);
+    fiber_switch(old->fiber, t->fiber);
     reclaim_stacks();  // resumed: free stacks of threads that finished while we were away
 }
 
 void Scheduler::reclaim_stacks() {
     auto reclaim = [this](GuestThread* t) {
-        if (t->stack && t->state == GuestThread::Moribund && t != current_) {
-            munmap(t->stack, t->stack_size);
-            t->stack = nullptr;
+        if (t->fiber && t->state == GuestThread::Moribund && t != current_ && t->fiber != fiber_current_thread()) {
+            fiber_destroy(t->fiber);
+            t->fiber = nullptr;
         }
     };
     for (auto& t : threads_) reclaim(t.get());

@@ -1,12 +1,11 @@
-// Guest threads as host fibers (ucontext) on one host thread, with SDK priority semantics.
+// Guest threads as host fibers (rt/fiber.hpp) on one host thread, with SDK priority semantics.
 #pragma once
-#include <ucontext.h>
-
 #include <cstdint>
 #include <functional>
 #include <memory>
 #include <vector>
 
+#include "rt/fiber.hpp"
 #include "rt/guest.hpp"
 
 namespace rt {
@@ -27,9 +26,7 @@ struct GuestThread {
     uint64_t seq = 0;        // FIFO order among equal priorities
     ppc_ctx* ctx = nullptr;  // points at own_ctx, or the caller's ctx for the main thread
     ppc_ctx own_ctx{};
-    ucontext_t uc{};
-    void* stack = nullptr;   // mmap'd host stack (with guard page), null for main
-    size_t stack_size = 0;
+    Fiber* fiber = nullptr;  // host fiber (the thread's own for main)
     ~GuestThread();
 };
 
