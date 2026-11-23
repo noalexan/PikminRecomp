@@ -34,6 +34,7 @@ build/cmake/pikmin                                  # data from orig/GPIP01; --d
 build/cmake/pikmin --disc ISO --headless --fast --frames 600            # no GPU, virtual clock
 build/cmake/pikmin --disc ISO --offscreen --fast --frames 750 \
     --input-script script.txt --screenshot 700:build/shot.ppm          # real GPU, no window
+build/cmake/pikmin --record-input build/rec.txt                        # replay later with --input-script
 
 # Regenerate the C by hand / inspect the recompiler report
 python3 -m recomp --dol orig/GPIP01/sys/main.dol --map orig/GPIP01/files/dataDir/build.map \
@@ -119,7 +120,16 @@ python3 -m recomp --dol orig/GPIP01/sys/main.dol --map orig/GPIP01/files/dataDir
 
 ## Debugging the game
 
-- **Fatal errors** (`ppc_bad_access`, `ppc_unimpl`, `ppc_hle_missing`) and the **watchdog** (no retrace for 5 s) print host backtraces whose frames are `f_<guest addr>`. Resolve them with `python3 tools/resolve_bt.py LOGFILE`.
+- **Crash reports.** Fatal signals (`SIGSEGV`, `SIGBUS`, `SIGILL`, `SIGFPE`, `SIGABRT`), `ppc_bad_access` / `ppc_unimpl` / `ppc_hle_missing` and the **watchdog** (no retrace for 5 s) all write one report (`rt/crash.cpp`) to stderr and the run log, then re-raise so a core is still dumped:
+  - it is framed by `=== pikmin crash: <reason> ===` … `=== end ===`;
+  - it contains the build, fault or guest address, retrace count, last HLE call, current guest thread with its `lr`/`r1`/`r3`–`r5` (or the IRQ context), and the host backtrace (`f_<guest addr>` frames);
+  - it ends with the last 256 recent events.
+  - `python3 tools/resolve_bt.py LOG` maps the last report's frames and `lr` to guest function names and objects. It works on Release builds too (`-g1`).
+- **Run logs:** every run writes `$XDG_STATE_HOME/pikminrecomp/logs/pikmin-<time>-<pid>.log` (default `~/.local/state`; the last 10 are kept). The header records the git hash, build type, command line, config, mode, clock, GPU adapter and display mode. All `rt::log` output and the guest's `OSReport` text go there too.
+- **Recent events:** a 4096-entry in-memory ring (`rt/trace.hpp`) records HLE entries, DVD opens and reads, thread switches, IRQ callbacks, display copies and scene changes (section-init hooks in `hle/sections.cpp`; also logged as `[scene]`). `PIKMIN_TRACE=hle,dvd,thread,irq,frame,scene` (or `all`) prints channels live. Entries carry the retrace count, not clock ticks: reading the clock advances virtual time in `--fast` mode.
+- **Replaying:** `--record-input PATH` writes port-0 input per retrace in `--input-script` format (a line per change, flushed at once), so a `--fast` crash can be replayed exactly. Real-time runs aren't fully deterministic; the recording's header names the clock mode.
+- **Triage:** group crashes by their top guest frames; fix each root cause in the HLE/runtime with a note in `docs/superpowers/notes/`, never in generated code.
+- **Testing the crash paths:** `--crash-test segv|bad_access|abort|double_fault|hang[:RETRACE]` (default retrace 30).
 - **Decompile guest code** by name with Ghidra. The project is `ghidra/PikminGPIP01.gpr`, built by `tools/make_ghidra_project.sh` with the Gekko language and r13/r2/GQR0 preset:
   ```sh
   JAVA_HOME=/usr/lib/jvm/java-25-openjdk /opt/ghidra/support/analyzeHeadless ghidra PikminGPIP01 \
@@ -155,27 +165,9 @@ python3 -m recomp --dol orig/GPIP01/sys/main.dol --map orig/GPIP01/files/dataDir
 - **Lookup order:** `--disc PATH` (image or tree), then `disc = "..."` in config, then `<bindir>/../share/pikminrecomp/data` (installed), then `orig/GPIP01` in the checkout. So `build/cmake/pikmin` and the installed `pikmin` both run with no arguments.
 - **`cmake --install`** copies the tree (about 655 MB) to `${CMAKE_INSTALL_DATADIR}/pikminrecomp/data`. The binary and the data are Nintendo's: keep them out of git and never distribute them.
 
-## Planned: crash diagnostics
-
-Not implemented yet. The game crashes occasionally, and runs launched from the desktop entry or Steam lose stderr, so there is no evidence to work from. Do this before the Windows port, so the port has the same diagnostics.
-
-1. **Persistent log file.** `rt::log` also writes to `$XDG_STATE_HOME/pikminrecomp/logs/pikmin-<timestamp>.log` (default `~/.local/state`); keep the last 10 runs. Line-buffered and flushed on every fatal path. Start each file with the build (git hash, Debug or Release), the config values, GPU adapter and display mode.
-2. **Crash handler.**
-   - Install handlers for `SIGSEGV`, `SIGBUS`, `SIGILL`, `SIGFPE` and `SIGABRT` on an alternate signal stack, since a fiber stack may be the thing that overflowed.
-   - Write, async-signal-safely: the signal and fault address; the host backtrace (`f_<addr>` frames); the current guest thread; `c->lr`, r1 and r3–r5 from its `ppc_ctx`; whether it was in an IRQ callback; the retrace count.
-   - Then re-raise, so `coredumpctl` still gets a core.
-   - `ppc_bad_access`, `ppc_unimpl`, `ppc_hle_missing` and the watchdog write the same report.
-3. **Recent-events ring buffer.** A fixed in-memory ring (a few thousand entries) of cheap events: HLE entries (name, caller LR), DVD opens and reads, scene changes, thread switches, IRQ deliveries, GX frame boundaries. It is dumped into the crash report, so there's no logging cost until a crash. `PIKMIN_TRACE=hle,dvd,...` also prints chosen channels live.
-4. **Symbols in Release.**
-   - Build Release with `-g1` (line tables) and keep `-rdynamic`, so installed-binary backtraces show `f_<addr>` names.
-   - Optionally split the debug info into `pikmin.debug` with `objcopy --only-keep-debug`.
-   - `tools/resolve_bt.py` accepts a crash log directly and maps each `f_<addr>` to the guest function name and source object from `build.map`.
-5. **Reproducing.** `--record-input PATH` writes the pad input per retrace, in `--input-script` format. With `--fast` and the virtual clock, a recorded crash can often be replayed deterministically. Real-time runs aren't fully deterministic (host timing decides when interrupts are delivered), so log the clock mode and keep the recording alongside the crash log.
-6. **Triage.** Group crashes by their top guest frames. Fix each root cause in the HLE/runtime and add a note in `docs/superpowers/notes/`. Never patch generated code.
-
 ## Planned: Windows build
 
-Not implemented yet; do it after crash diagnostics. Target: native Windows x64 build with MSVC-compatible toolchain **clang-cl** (or MinGW-w64 clang), D3D12 or Vulkan through Dawn, same game data layout. Linux stays the primary platform.
+Not implemented yet. Crash diagnostics (see "Debugging the game") are done; the port needs the same. Target: native Windows x64 build with MSVC-compatible toolchain **clang-cl** (or MinGW-w64 clang), D3D12 or Vulkan through Dawn, same game data layout. Linux stays the primary platform.
 
 1. **Toolchain and recompiler output.**
    - Use clang (clang-cl or MinGW clang) rather than plain MSVC. The generated C relies on GCC/Clang extensions: `__attribute__((weak))` stubs, `-fwrapv`, `-ffp-contract=off` and `-fno-strict-aliasing`, plus the `.incbin` assembly blob.
