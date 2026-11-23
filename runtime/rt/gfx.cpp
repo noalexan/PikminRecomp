@@ -10,6 +10,7 @@
 #include <aurora/aurora.h>
 #include <aurora/event.h>
 #include <aurora/gfx.h>
+#include <aurora/input.hpp>
 #include <dolphin/gx.h>
 #include <dolphin/gx/GXAurora.h>
 #include <SDL3/SDL_video.h>
@@ -55,6 +56,18 @@ struct Screenshot {
     uint32_t w = 0, h = 0;
     AuroraReadbackStream stream = 0;
 } g_shot;
+
+// The game is played with a pad or the keyboard: hide the mouse pointer over the window. Menus
+// drawn on top register their own (higher) input layer to show it again.
+void hide_pointer_in_game() {
+    namespace in = aurora::input;
+    in::LayerDescriptor d;
+    d.label = "pikmin game";
+    d.priority = in::kGameLayerPriority;
+    d.onEvent = [](const in::InputEvent&, void*) { return in::EventResult::Pass; };
+    d.pointerMode = [](void*) { return in::PointerMode::Hidden; };
+    if (in::register_layer(d) == in::kInvalidLayerId) log("gfx", "cannot register the game input layer");
+}
 
 void aurora_log(AuroraLogLevel level, const char* module, const char* msg, unsigned int) {
     if (level >= LOG_WARNING) log("aurora", "%s %s: %s", level >= LOG_ERROR ? "ERROR" : "warning", module, msg);
@@ -135,6 +148,7 @@ bool gfx_init(const GfxOptions& opt) {
     g_in_frame = aurora_begin_frame();
     log("gfx", "graphics ready (%ux%u%s)", opt.width, opt.height, opt.headless_surface ? ", offscreen" : "");
     if (!opt.headless_surface) {
+        hide_pointer_in_game();
         SDL_Window* win = aurora_get_window();
         SDL_DisplayID id = win ? SDL_GetDisplayForWindow(win) : SDL_GetPrimaryDisplay();
         if (const SDL_DisplayMode* mode = id ? SDL_GetCurrentDisplayMode(id) : nullptr) {
