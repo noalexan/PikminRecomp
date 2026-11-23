@@ -91,9 +91,16 @@ target_link_libraries(pikmin PRIVATE "$<LINK_LIBRARY:WHOLE_ARCHIVE,pikmin_rt>" p
 
 if (WIN32)
     # Windows: one folder (cmake --install build/win --prefix DIR): pikmin.exe, the MinGW DLLs it
-    # needs (tools/mingw_dlls.sh) and data/ (found next to the .exe). Nintendo data: never distribute.
+    # needs (tools/mingw_dlls.py) and data/ (found next to the .exe). Nintendo data: never distribute.
+    # The MinGW DLLs come from the sysroot (cross builds) or the compiler's folder (MSYS2).
+    get_filename_component(_cxx_bin ${CMAKE_CXX_COMPILER} DIRECTORY)
+    set(_dll_dirs ${_cxx_bin})
+    foreach (_root ${CMAKE_FIND_ROOT_PATH})
+        list(APPEND _dll_dirs ${_root}/bin)
+    endforeach ()
     add_custom_command(TARGET pikmin POST_BUILD
-        COMMAND ${PROJECT_SOURCE_DIR}/tools/mingw_dlls.sh $<TARGET_FILE:pikmin>
+        COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/tools/mingw_dlls.py ${CMAKE_OBJDUMP} $<TARGET_FILE:pikmin>
+                $<TARGET_FILE_DIR:pikmin> ${_dll_dirs}
         COMMENT "Copying the DLLs pikmin.exe needs" VERBATIM)
     install(TARGETS pikmin RUNTIME DESTINATION .)
     install(CODE "file(GLOB _dlls \"${CMAKE_CURRENT_BINARY_DIR}/*.dll\")

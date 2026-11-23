@@ -11,6 +11,7 @@
 #include <QJsonObject>
 #include <QNetworkReply>
 #include <QNetworkRequest>
+#include <QStandardPaths>
 
 #include "core/paths.hpp"
 #include "core/progress.hpp"
@@ -65,6 +66,8 @@ QString Launcher::source_dir() const {
 }
 
 QString Launcher::game_exe() const { return kWindows ? data("game/pikmin.exe") : data("game/bin/pikmin"); }
+
+QString Launcher::python_exe() const { return kWindows ? "python" : "python3"; }
 
 QStringList Launcher::tool_paths() const {
     if (!kWindows) return {};
@@ -271,8 +274,12 @@ void Launcher::run_process(const QString& program, const QStringList& args, cons
             fail("Couldn't start " + program);
         }
     });
-    append_log("$ " + program + " " + args.join(' ') + "\n");
-    proc_->start(program, args);
+    // Resolve in the toolchain folders first (MSYS2 isn't necessarily on the launcher's own PATH).
+    QString exe = QStandardPaths::findExecutable(program, tool_paths());
+    if (exe.isEmpty()) exe = QStandardPaths::findExecutable(program);
+    if (exe.isEmpty()) exe = program;
+    append_log("$ " + exe + " " + args.join(' ') + "\n");
+    proc_->start(exe, args);
 }
 
 void Launcher::download(const QUrl& url, const QString& to, std::function<void()> done) {
@@ -321,7 +328,7 @@ void Launcher::cancel() {
 void Launcher::build() {
     if (busy_ || !rom_ok_ || !toolchain_ok_) return;
     const QString ver = version(), src = source_dir(), build = data("build"), stage = data("game-new");
-    const QString python = kWindows ? "python" : "python3";
+    const QString python = python_exe();
     const bool dev = !qEnvironmentVariable("PIKMIN_LAUNCHER_SOURCE").isEmpty();
     std::vector<Step> steps;
 
@@ -333,8 +340,7 @@ void Launcher::build() {
                                  next();
                                  return;
                              }
-                             download(QUrl(source_archive_url(ver, kWindows)), data(kWindows ? "src.zip" : "src.tar.gz"),
-                                      [this] { next(); });
+                             download(QUrl(source_archive_url(ver, false)), data("src.tar.gz"), [this] { next(); });
                          }});
         steps.push_back({"Unpacking the source", 2, [this, ver] {
                              QFile v(data("src/VERSION.launcher"));
@@ -344,10 +350,19 @@ void Launcher::build() {
                              }
                              remove_tree(data("src-new"));
                              QDir().mkpath(data("src-new"));
-                             // bsdtar on Windows 10+ reads zip; GNU tar on Linux.
-                             run_process("tar", {"-xf", data(kWindows ? "src.zip" : "src.tar.gz"), "-C", data("src-new"),
-                                                 "--strip-components=1"},
-                                         data_dir());
+                             // Python (needed for the build anyway) unpacks the same way everywhere; MSYS2's
+                             // GNU tar would read "C:/..." as a remote host.
+                             static const char* kUnpack =
+                                 "import sys, tarfile\n"
+                                 "src, dst = sys.argv[1], sys.argv[2]\n"
+                                 "with tarfile.open(src) as t:\n"
+                                 "    for m in t.getmembers():\n"
+                                 "        parts = m.name.split('/', 1)\n"
+                                 "        if len(parts) < 2 or not parts[1]: continue\n"
+                                 "        m.name = parts[1]\n"
+                                 "        try: t.extract(m, dst, filter='data')\n"
+                                 "        except TypeError: t.extract(m, dst)\n";
+                             run_process(python_exe(), {"-c", kUnpack, data("src.tar.gz"), data("src-new")}, data_dir());
                          }});
         steps.push_back({"Installing the source", 1, [this, ver] {
                              if (QFileInfo::exists(data("src-new"))) {
@@ -440,8 +455,9 @@ void Launcher::update() {
                              const QString dir = QCoreApplication::applicationDirPath(), exe = QCoreApplication::applicationFilePath();
                              QFile::remove(exe + ".old");
                              QFile::rename(exe, exe + ".old");
-                             QProcess tar;
-                             tar.start("tar", {"-xf", tmp, "-C", dir, "--strip-components=1"});
+                             QProcess tar;  // Windows' own bsdtar (reads zip), not MSYS2's GNU tar
+                             tar.start(qEnvironmentVariable("SystemRoot", "C:/Windows") + "/System32/tar.exe",
+                                       {"-xf", tmp, "-C", dir, "--strip-components=1"});
                              if (!tar.waitForFinished(120000) || tar.exitCode() != 0) {
                                  QFile::rename(exe + ".old", exe);
                                  fail("Couldn't unpack the update");

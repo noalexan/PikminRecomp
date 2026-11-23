@@ -25,7 +25,7 @@ rm -rf "$stage"/qml/QtQuick/{VirtualKeyboard,Scene2D,Scene3D,Timeline,Particles,
 printf '[Paths]\nPlugins = plugins\nQml2Imports = qml\n' > "$stage/qt.conf"
 # DLLs for the exe and every plugin, into the exe's folder.
 for f in "$stage/PikminRecompLauncher.exe" $(find "$stage/plugins" "$stage/qml" -name '*.dll'); do
-    OUT_DIR="$stage" "$root/tools/mingw_dlls.sh" "$f" >/dev/null
+    python3 "$root/tools/mingw_dlls.py" x86_64-w64-mingw32-objdump "$f" "$stage" "$mingw/bin" >/dev/null
 done
 out="$root/build/PikminRecompLauncher-$ver-windows.zip"
 rm -f "$out"

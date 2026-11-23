@@ -70,6 +70,7 @@ private:
     QString source_dir() const;
     QString game_exe() const;
     QStringList tool_paths() const;
+    QString python_exe() const;
     QProcessEnvironment build_env() const;
 
     QNetworkAccessManager net_;
