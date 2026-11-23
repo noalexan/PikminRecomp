@@ -1,4 +1,7 @@
 // DVD HLE over rt::Disc. DVDFileInfo layout: DVDCommandBlock (0x30) then startAddr, length, callback.
+#include <algorithm>
+#include <cstring>
+#include <map>
 #include <vector>
 
 #include "rt/clock.hpp"
@@ -17,18 +20,33 @@ constexpr uint32_t kCbState = 0x0C, kCbOffset = 0x10, kCbLength = 0x14, kCbAddr 
                    kFiStart = 0x30, kFiLength = 0x34, kFiCallback = 0x38;
 int g_pending = 0;
 
+// Overrides, keyed by entry and by the file's disc offset (what a DVDFileInfo carries).
+std::map<int, std::vector<uint8_t>> g_overrides;
+std::map<uint32_t, int> g_override_by_offset;
+
+const std::vector<uint8_t>* override_at(uint32_t start) {
+    auto it = g_override_by_offset.find(start);
+    return it == g_override_by_offset.end() ? nullptr : &g_overrides[it->second];
+}
+
 bool fill_file_info(ppc_ctx* c, int entry, uint32_t fi) {
     if (entry < 0 || static_cast<size_t>(entry) >= rt::disc()->entry_count()) return false;
     rt::FileRef f = rt::disc()->file(entry);
     if (f.is_dir) return false;
     for (uint32_t off = 0; off < 0x3C; off += 4) wr32(c, fi + off, 0);
     wr32(c, fi + kFiStart, f.offset);
-    wr32(c, fi + kFiLength, f.length);
+    const auto* o = rt::file_override(entry);
+    wr32(c, fi + kFiLength, o ? static_cast<uint32_t>(o->size()) : f.length);
     return true;
 }
 
 uint32_t read_into(ppc_ctx* c, uint32_t fi, uint32_t addr, uint32_t len, uint32_t offset) {
     uint32_t start = rt::rd32(c, fi + kFiStart);
+    if (const auto* o = override_at(start)) {
+        const size_t n = offset < o->size() ? std::min<size_t>(len, o->size() - offset) : 0;
+        if (n) std::memcpy(rt::host(c, addr, static_cast<uint32_t>(n)), o->data() + offset, n);
+        return static_cast<uint32_t>(n);
+    }
     size_t n = rt::disc()->read(static_cast<uint64_t>(start) + offset, std::span<uint8_t>(rt::host(c, addr, len), len));
     if (n != len) rt::log("dvd", "short read: %zu of %u bytes at disc offset 0x%x", n, len, start + offset);
     return static_cast<uint32_t>(n);
@@ -43,6 +61,29 @@ void block_briefly(ppc_ctx* c) {
     (void)c;
 }
 }  // namespace
+
+namespace rt {
+void set_file_override(int entry, std::vector<uint8_t> bytes) {
+    g_overrides[entry] = std::move(bytes);
+    g_override_by_offset[disc()->file(entry).offset] = entry;
+}
+const std::vector<uint8_t>* file_override(int entry) {
+    auto it = g_overrides.find(entry);
+    return it == g_overrides.end() ? nullptr : &it->second;
+}
+void clear_file_overrides() {
+    g_overrides.clear();
+    g_override_by_offset.clear();
+}
+std::vector<uint8_t> read_entry(int entry) {
+    if (!disc() || entry < 0 || static_cast<size_t>(entry) >= disc()->entry_count()) return {};
+    const FileRef f = disc()->file(entry);
+    if (f.is_dir) return {};
+    std::vector<uint8_t> out(f.length);
+    out.resize(disc()->read(f.offset, out));
+    return out;
+}
+}  // namespace rt
 
 extern "C" {
 

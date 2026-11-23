@@ -131,5 +131,25 @@ int main() {
     CHECK(std::memcmp(&test_ram()[0x300200], "hello", 5) == 0);
     CHECK(call(hle_DVDGetDriveStatus, &c, {}) == 0);
 
+    // file_override_serves_bytes: an overridden file has the override's length and bytes
+    std::memcpy(&test_ram()[0x300000], "/dir/B.bin", 11);
+    rt::set_file_override(3, {1, 2, 3, 4, 5, 6});
+    CHECK(rt::file_override(3) != nullptr && rt::file_override(1) == nullptr);
+    CHECK(call(hle_DVDOpen, &c, {PATH, FI}) == 1);
+    CHECK(rt::rd32(&c, FI + 0x34) == 6);
+    CHECK(call(hle_DVDReadPrio, &c, {FI, DST, 3, 1, 2}) == 3);
+    CHECK(test_ram()[0x300200] == 2 && test_ram()[0x300201] == 3 && test_ram()[0x300202] == 4);
+    std::memset(&test_ram()[0x300200], 0xAA, 8);
+    CHECK(call(hle_DVDReadPrio, &c, {FI, DST, 8, 0, 2}) == 6);  // short at the end, like the disc
+    CHECK(test_ram()[0x300205] == 6 && test_ram()[0x300206] == 0xAA);
+    CHECK(call(hle_DVDFastOpen, &c, {3, FI}) == 1);
+    CHECK(rt::rd32(&c, FI + 0x34) == 6);
+    // whole original file, regardless of overrides
+    CHECK(rt::read_entry(3) == std::vector<uint8_t>({0xDE, 0xAD, 0xBE, 0xEF}));
+    rt::clear_file_overrides();
+    CHECK(call(hle_DVDOpen, &c, {PATH, FI}) == 1);
+    CHECK(rt::rd32(&c, FI + 0x34) == 4);
+    CHECK(call(hle_DVDReadPrio, &c, {FI, DST, 4, 0, 2}) == 4 && rt::rd32(&c, DST) == 0xDEADBEEFu);
+
     return check_result();
 }

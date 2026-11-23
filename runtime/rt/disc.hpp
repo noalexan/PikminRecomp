@@ -58,4 +58,12 @@ private:
 void set_disc(std::unique_ptr<Disc> d);
 Disc* disc();
 
+// In-memory replacement for one file, as the guest sees it through the DVD functions (length and
+// contents). Used for screen files patched at run time; nothing is written to disk.
+void set_file_override(int entry, std::vector<uint8_t> bytes);
+const std::vector<uint8_t>* file_override(int entry);
+void clear_file_overrides();
+// The original contents of a file entry (empty for directories or a bad entry).
+std::vector<uint8_t> read_entry(int entry);
+
 }  // namespace rt
