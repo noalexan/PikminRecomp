@@ -47,6 +47,12 @@ void start() {
 namespace rt {
 uint32_t vi_retrace_count() { return g_count.load(); }
 void vi_set_frame_limit(uint32_t n) { g_frame_limit = n; }
+uint32_t vi_hz() { return g_hz; }
+// Blocks the calling guest thread until the retrace count reaches `target`.
+void vi_wait_until(uint32_t target) {
+    start();
+    while (g_count < target) sched().sleep_on(kRetraceQueue);
+}
 }  // namespace rt
 
 extern "C" {

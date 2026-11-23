@@ -32,6 +32,8 @@ Jac_StartDemo = "poll"                                # now_loading
 "waitRetrace__11DGXGraphicsFv" = "hook"
 "updateSysClock__6SystemFv" = "hook"
 "update__11CullFrustumFffff" = "hook"
+"startLoading__6SystemFP9LoadIdlerbUl" = "hook"
+"endLoading__6SystemFv" = "hook"
 # Scene breadcrumbs for crash diagnostics (hle/sections.cpp)
 "init__13TitlesSectionFv" = "hook"
 "init__14NinLogoSectionFv" = "hook"
