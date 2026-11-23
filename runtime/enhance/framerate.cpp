@@ -39,8 +39,11 @@ Settings& settings() {
 
 namespace {
 float g_orig_frames = 1.f;
+float g_step_acc = 1.f;  // original frames not yet stepped (starts full: the first frame steps)
+int g_steps = 1;
 }
 float orig_frames() { return original_timing() ? 1.f : g_orig_frames; }
+int orig_frame_steps() { return original_timing() ? 1 : g_steps; }
 
 int effective_fps() {
     const Settings& s = settings();
@@ -142,6 +145,9 @@ void hle_updateSysClock__6SystemFv(ppc_ctx* c) {
         const uint32_t rpf = std::max<uint32_t>(1, rt::rd32(c, self + 0x14));
         const float orig_frame = 0.02f * static_cast<float>(rpf);
         enh::g_orig_frames = std::min(dt / orig_frame, 4.f);
+        enh::g_step_acc += enh::g_orig_frames;
+        enh::g_steps = std::min(static_cast<int>(enh::g_step_acc), 4);
+        enh::g_step_acc = std::min(enh::g_step_acc - static_cast<float>(enh::g_steps), 1.f);  // no catch-up burst
         dt *= std::min(orig_frame, 1.f / 30.f) / orig_frame;
         std::memcpy(&u, &dt, 4);
         rt::wr32(c, self + enh::kFrameTimeOff, u);

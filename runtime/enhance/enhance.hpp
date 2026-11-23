@@ -34,6 +34,9 @@ inline bool original_timing() { return settings().target_fps < 0; }
 // How many original (PAL) game frames this frame stands for: real frame time x the original frame
 // rate (50 Hz / retraces per frame). 1 in the original mode. Frame-counted systems scale by it.
 float orig_frames();
+// Whole original frames that elapsed this frame (0 most frames at 240 fps; 1 in the original mode).
+// Shared by every per-frame step so they stay in lockstep, as on PAL (enhance/particles.cpp).
+int orig_frame_steps();
 
 // Hooks from the GX shims (graphics builds only).
 void on_set_projection(float m[16], uint32_t type);  // adjusts 2D projections in place
