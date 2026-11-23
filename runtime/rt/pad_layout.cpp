@@ -53,15 +53,15 @@ std::vector<Binding> default_keyboard_bindings() {
     };
 }
 
-// Positional layout (as on the GameCube pad, and as Dolphin maps it): Cross/South = A, Square/West = B,
-// Circle/East = X, Triangle/North = Y, R1 = Z, L2/R2 = analog L/R, Options / touchpad = Start.
+// Cross/South = A, Circle/East = B (back, as players expect on a PlayStation pad), Square/West = X,
+// Triangle/North = Y, R1 = Z, L2/R2 = analog L/R, Options / touchpad = Start.
 // Right stick = camera (modern camera); L1 + right stick = C-stick (swarming).
 // SDL's Y axes point down; the GameCube's point up.
 std::vector<Binding> default_controller_bindings() {
     std::vector<Binding> v = {
         button(SDL_GAMEPAD_BUTTON_SOUTH, "aurora.pad.a"),
-        button(SDL_GAMEPAD_BUTTON_WEST, "aurora.pad.b"),
-        button(SDL_GAMEPAD_BUTTON_EAST, "aurora.pad.x"),
+        button(SDL_GAMEPAD_BUTTON_EAST, "aurora.pad.b"),
+        button(SDL_GAMEPAD_BUTTON_WEST, "aurora.pad.x"),
         button(SDL_GAMEPAD_BUTTON_NORTH, "aurora.pad.y"),
         button(SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, "aurora.pad.z"),
         button(SDL_GAMEPAD_BUTTON_LEFT_SHOULDER, "aurora.pad.ext.misc1"),  // swarm modifier

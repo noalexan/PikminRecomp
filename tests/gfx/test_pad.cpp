@@ -100,8 +100,8 @@ int main() {
     gcall(hle_PADInit, &c, {});
     auto ctl = rt::default_controller_bindings();
     CHECK(has_binding(ctl, "aurora.pad.a", SDL_GAMEPAD_BUTTON_SOUTH));
-    CHECK(has_binding(ctl, "aurora.pad.b", SDL_GAMEPAD_BUTTON_WEST));
-    CHECK(has_binding(ctl, "aurora.pad.x", SDL_GAMEPAD_BUTTON_EAST));
+    CHECK(has_binding(ctl, "aurora.pad.b", SDL_GAMEPAD_BUTTON_EAST));
+    CHECK(has_binding(ctl, "aurora.pad.x", SDL_GAMEPAD_BUTTON_WEST));
     CHECK(has_binding(ctl, "aurora.pad.y", SDL_GAMEPAD_BUTTON_NORTH));
     CHECK(has_binding(ctl, "aurora.pad.z", SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER));
     CHECK(has_binding(ctl, "aurora.pad.start", SDL_GAMEPAD_BUTTON_START));
