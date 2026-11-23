@@ -24,7 +24,9 @@
 #include "rt/crash.hpp"
 #include "rt/diag.hpp"
 #include "rt/trace.hpp"
+#include "ui/debug_hud.hpp"
 #include "ui/settings.hpp"
+#include "rt/sysinfo.hpp"
 #include "rt/disc.hpp"
 #include "rt/gfx.hpp"
 #include "rt/input_record.hpp"
@@ -50,7 +52,8 @@ void usage() {
     std::puts(
         "usage: pikmin [--disc PATH] [--headless | --offscreen] [--fast] [--frames N] [--watchdog SECONDS]\n"
         "              [--screenshot FRAME:PATH] [--input-script PATH] [--record-input PATH] [--config PATH]\n"
-        "              [--aspect auto|4:3] [--target-fps auto|original|N] [--hud-scale X] [--camera modern|original]");
+        "              [--aspect auto|4:3] [--target-fps auto|original|N] [--hud-scale X] [--camera modern|original]\n"
+        "              [--debug-hud]");
 }
 
 // $XDG_DATA_HOME/pikminrecomp (falls back to ~/.local/share/pikminrecomp), created if missing.
@@ -141,7 +144,7 @@ void open_run_log(int argc, char** argv, const rt::Config& cfg, const enh::Setti
 
 int main(int argc, char** argv) {
     std::string config_path = rt::default_config_path(), disc_arg;
-    bool headless_flag = false, offscreen = false, fast = false;
+    bool headless_flag = false, offscreen = false, fast = false, debug_hud_flag = false;
     uint32_t shot_frame = 0;
     std::string shot_path;
     uint32_t frames = 0;
@@ -186,6 +189,7 @@ int main(int argc, char** argv) {
         else if (a == "--target-fps") fps_arg = next();
         else if (a == "--hud-scale") hud_arg = next();
         else if (a == "--camera") camera_arg = next();
+        else if (a == "--debug-hud") debug_hud_flag = true;
         else if (a == "--help" || a == "-h") {
             usage();
             return 0;
@@ -258,6 +262,9 @@ int main(int argc, char** argv) {
         fail("--screenshot needs graphics (drop --headless, or use --offscreen)");
     }
     ui::init(config_path, cfg.fullscreen, cfg.vsync, !headless && !offscreen);
+    ui::hud_init(config_path, !headless && (cfg.debug_hud || debug_hud_flag));
+    rt::gfx_set_hud(ui::hud_draw, ui::hud_toggle);
+    if (!headless) rt::sysinfo_init(static_cast<pid_t>(gettid()), rt::gfx_adapter_info());
 
     static ppc_ctx ctx{};
     ctx.mem = ram.data();

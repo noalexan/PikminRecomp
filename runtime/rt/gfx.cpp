@@ -14,6 +14,7 @@
 #include <dolphin/gx.h>
 #include <dolphin/gx/GXAurora.h>
 #include <SDL3/SDL_keyboard.h>
+#include "webgpu/gpu.hpp"  // aurora internal: the adapter in use
 #include <SDL3/SDL_video.h>
 #endif
 
@@ -44,6 +45,8 @@ bool gfx_fullscreen() { return false; }
 void gfx_set_vsync(bool) {}
 void gfx_set_aspect_4_3(bool) {}
 void gfx_on_fullscreen_toggled(void (*)(bool)) {}
+GpuInfo gfx_adapter_info() { return {}; }
+void gfx_set_hud(void (*)(), void (*)()) {}
 #else
 
 namespace {
@@ -54,6 +57,8 @@ bool g_init_failed = false;
 bool g_in_frame = false;
 uint32_t g_begin_failures = 0;
 void (*g_fullscreen_cb)(bool) = nullptr;
+void (*g_hud_draw)() = nullptr;
+void (*g_hud_toggle)() = nullptr;
 
 struct Screenshot {
     uint32_t frame = 0;
@@ -221,6 +226,37 @@ void gfx_set_aspect_4_3(bool on) {
 
 void gfx_on_fullscreen_toggled(void (*cb)(bool)) { g_fullscreen_cb = cb; }
 
+void gfx_set_hud(void (*draw)(), void (*toggle)()) {
+    g_hud_draw = draw;
+    g_hud_toggle = toggle;
+}
+
+GpuInfo gfx_adapter_info() {
+    static GpuInfo info;
+    static bool have = false;
+    if (have || !g_active || !aurora::webgpu::g_adapter) return info;
+    wgpu::AdapterInfo a{};
+    if (!aurora::webgpu::g_adapter.GetInfo(&a)) return info;
+    auto str = [](wgpu::StringView v) {
+        if (!v.data) return std::string();
+        return v.length == WGPU_STRLEN ? std::string(v.data) : std::string(v.data, v.length);
+    };
+    info.name = str(a.device);
+    if (info.name.empty()) info.name = str(a.description);
+    switch (a.backendType) {
+        case wgpu::BackendType::Vulkan: info.backend = "Vulkan"; break;
+        case wgpu::BackendType::D3D12: info.backend = "D3D12"; break;
+        case wgpu::BackendType::Metal: info.backend = "Metal"; break;
+        case wgpu::BackendType::OpenGL: info.backend = "OpenGL"; break;
+        default: info.backend = "other"; break;
+    }
+    info.vendor = a.vendorID;
+    info.device = a.deviceID;
+    have = true;
+    log_file_only("gfx", "adapter %s (%s, %04x:%04x)", info.name.c_str(), info.backend.c_str(), info.vendor, info.device);
+    return info;
+}
+
 void gfx_request_screenshot(uint32_t frame, std::string path) {
     g_shot.frame = frame;
     g_shot.path = std::move(path);
@@ -239,7 +275,10 @@ void gfx_present() {
         g_shot.captured = AuroraReadbackCaptureColor(g_shot.stream, g_shot.key, &g_shot.w, &g_shot.h);
         if (!g_shot.captured) log("gfx", "screenshot capture rejected");
     }
-    if (g_in_frame) aurora_end_frame();
+    if (g_in_frame) {
+        if (g_hud_draw) g_hud_draw();
+        aurora_end_frame();
+    }
     static const bool stats = std::getenv("PIKMIN_GFX_STATS") != nullptr;
     if (stats) {
         const AuroraStats* st = aurora_get_stats();
@@ -258,6 +297,10 @@ void gfx_present() {
             !ev->sdl.key.repeat) {
             gfx_set_fullscreen(!gfx_fullscreen());
             if (g_fullscreen_cb) g_fullscreen_cb(gfx_fullscreen());
+        }
+        if (ev->type == AURORA_SDL_EVENT && ev->sdl.type == SDL_EVENT_KEY_DOWN && ev->sdl.key.key == SDLK_F3 &&
+            !ev->sdl.key.repeat) {
+            if (g_hud_toggle) g_hud_toggle();
         }
     }
     g_in_frame = aurora_begin_frame();  // false while minimised/pending: keep running, game time must not stall

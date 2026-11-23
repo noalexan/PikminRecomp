@@ -10,6 +10,7 @@
 #include <cstring>
 
 #include "enhance/enhance.hpp"
+#include "rt/perf.hpp"
 #include "rt/clock.hpp"
 #include "rt/gfx.hpp"
 #include "rt/guest.hpp"
@@ -102,6 +103,7 @@ void hle_waitRetrace__11DGXGraphicsFv(ppc_ctx* c) {
     HLE_ENTRY(c, "DGXGraphics::waitRetrace");
     if (enh::original_timing() || !f_80047c68_orig || !hle_GXCopyDisp) {
         if (f_80047c68_orig) f_80047c68_orig(c);
+        if (rt::gfx_active()) rt::perf_frame(enh::host_now(), 0, 0, 1.0 / 25.0);  // debug HUD
         return;
     }
     const uint32_t self = rt::arg(c, 0);
@@ -117,8 +119,10 @@ void hle_waitRetrace__11DGXGraphicsFv(ppc_ctx* c) {
     c->r[3] = rt::rd32(c, self + 0x610);
     c->r[4] = keep ? 0 : 1;
     hle_GXCopyDisp(c);
+    const double t2 = enh::host_now();
     enh::g_pace_s += t1 - t0;
-    enh::g_present_s += enh::host_now() - t1;
+    enh::g_present_s += t2 - t1;
+    if (rt::gfx_active()) rt::perf_frame(t2, t2 - t1, t1 - t0, 1.0 / enh::effective_fps());  // debug HUD
     rt::wr32(c, self + 0x618, rt::vi_retrace_count());
     rt::wr32(c, self + 0x61c, rt::rd32(c, gsys + 0x14));
 }

@@ -19,7 +19,8 @@ struct Config {
     // Game frames per second: 0 = display refresh rate, -1 = original (PAL VI pacing).
     int target_fps = 0;
     float hud_scale = 0.5f;  // gameplay HUD size relative to the original (anchored to screen edges)
-    bool modern_camera = true;  // right stick orbits/tilts the camera; modifier + right stick swarms
+    bool modern_camera = true;
+    bool debug_hud = false;  // F3 panel shown at start  // right stick orbits/tilts the camera; modifier + right stick swarms
     std::vector<std::string> warnings;
 };
 

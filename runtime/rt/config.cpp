@@ -94,6 +94,9 @@ Config parse_config(const std::string& text) {
             float v = std::strtof(value.c_str(), &end);
             if (!is_str && end && *end == '\0' && v >= 0.2f && v <= 1.5f) cfg.hud_scale = v;
             else warn("hud_scale must be a number 0.2-1.5");
+        } else if (key == "debug_hud") {
+            if (value == "true" || value == "false") cfg.debug_hud = value == "true";
+            else warn("debug_hud must be true or false");
         } else if (key == "camera") {
             std::string v = is_str ? value.substr(1, value.size() - 2) : value;
             if (v == "modern" || v == "original") cfg.modern_camera = v == "modern";

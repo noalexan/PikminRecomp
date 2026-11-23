@@ -26,6 +26,7 @@ int main() {
     CHECK(def.target_fps == 144 && def.aspect == 0.f && def.hud_scale == 0.5f && def.modern_camera);
     CHECK(rt::parse_fps("5") == -2 && rt::parse_aspect("wide") < 0.f);
 
+    CHECK(rt::parse_config("debug_hud = true\n").debug_hud && !rt::parse_config("").debug_hud);
     // Writer: only the edited key changes; comments, unknown keys and order are kept.
     const std::string base = "# mine\ndisc = \"/x.iso\"  # keep\nmystery = 7\nhud_scale = 0.5\n";
     CHECK(rt::write_config_value(base, "hud_scale", "0.7") ==
