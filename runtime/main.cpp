@@ -1,9 +1,8 @@
 // pikmin: runs the recompiled game. Plan 2 supports headless mode only.
-#include <execinfo.h>
+#ifndef _WIN32
 #include <pthread.h>
 #include <signal.h>
-#include <sys/stat.h>
-#include <unistd.h>
+#endif
 
 #include <atomic>
 #include <fstream>
@@ -27,6 +26,7 @@
 #include "ui/debug_hud.hpp"
 #include "ui/settings.hpp"
 #include "rt/sysinfo.hpp"
+#include "rt/platform.hpp"
 #include "rt/disc.hpp"
 #include "rt/gfx.hpp"
 #include "rt/input_record.hpp"
@@ -56,14 +56,13 @@ void usage() {
         "              [--debug-hud]");
 }
 
-// $XDG_DATA_HOME/pikminrecomp (falls back to ~/.local/share/pikminrecomp), created if missing.
+// $XDG_DATA_HOME/pikminrecomp (~/.local/share/pikminrecomp; %APPDATA%/pikminrecomp on Windows),
+// created if missing.
 std::string state_dir() {
-    const char* xdg = std::getenv("XDG_DATA_HOME");
-    std::string base = xdg && *xdg ? xdg : std::string(std::getenv("HOME") ? std::getenv("HOME") : ".") + "/.local/share";
+    std::string base = rt::plat::user_dir(rt::plat::UserDir::Data);
+    if (base.empty()) base = ".";
     std::string dir = base + "/pikminrecomp";
-    for (size_t i = 1; i <= dir.size(); ++i) {
-        if (i == dir.size() || dir[i] == '/') mkdir(dir.substr(0, i).c_str(), 0755);
-    }
+    rt::plat::make_dirs(dir);
     return dir;
 }
 
@@ -71,35 +70,37 @@ extern "C" const uint8_t pikmin_dol_start[], pikmin_dol_end[];  // dol_blob.S
 
 // Game data when neither --disc nor config names one: installed tree, then the source checkout.
 std::string default_data_dir() {
-    char exe[4096];
-    ssize_t n = readlink("/proc/self/exe", exe, sizeof exe - 1);
     std::vector<std::string> candidates;
-    if (n > 0) {
-        std::string e(exe, static_cast<size_t>(n));
-        candidates.push_back(e.substr(0, e.rfind('/')) + "/" PIKMIN_DATA_REL);
+    if (const std::string e = rt::plat::exe_path(); !e.empty()) {
+        const std::string bin = e.substr(0, e.rfind('/'));
+        candidates.push_back(bin + "/" PIKMIN_DATA_REL);
+        candidates.push_back(bin + "/data");  // Windows install folder: pikmin.exe next to data/
     }
     candidates.push_back(PIKMIN_SOURCE_DATA);
     for (auto& d : candidates) {
-        struct stat st{};
-        if (stat((d + "/sys/fst.bin").c_str(), &st) == 0) return d;
+        if (std::ifstream(d + "/sys/fst.bin")) return d;
     }
     return {};
 }
 
-pthread_t g_game_thread;
-
 char g_watchdog_reason[64];
+
+#ifndef _WIN32
+pthread_t g_game_thread;
 
 // Runs on the game thread when the watchdog fires: report where it is stuck, then exit.
 void on_watchdog_signal(int) {
     rt::crash_report(rt::CrashInfo{g_watchdog_reason});
     std::_Exit(3);
 }
+#endif
 
 void start_watchdog(int seconds) {
-    g_game_thread = pthread_self();
     std::snprintf(g_watchdog_reason, sizeof g_watchdog_reason, "watchdog: no retrace for %d s", seconds);
+#ifndef _WIN32
+    g_game_thread = pthread_self();
     signal(SIGUSR2, on_watchdog_signal);
+#endif
     std::thread([seconds] {
         uint32_t last = rt::vi_retrace_count();
         auto since = std::chrono::steady_clock::now();
@@ -111,7 +112,13 @@ void start_watchdog(int seconds) {
                 since = std::chrono::steady_clock::now();
             } else if (std::chrono::steady_clock::now() - since > std::chrono::seconds(seconds)) {
                 std::fflush(stdout);
+#ifdef _WIN32
+                // No signal to interrupt the game thread: report from here (the guest state read
+                // is racy but the game thread is stuck), then exit.
+                rt::crash_report(rt::CrashInfo{g_watchdog_reason});
+#else
                 pthread_kill(g_game_thread, SIGUSR2);
+#endif
                 std::this_thread::sleep_for(std::chrono::seconds(2));
                 std::_Exit(3);
             }
@@ -264,7 +271,7 @@ int main(int argc, char** argv) {
     ui::init(config_path, cfg.fullscreen, cfg.vsync, !headless && !offscreen);
     ui::hud_init(config_path, !headless && (cfg.debug_hud || debug_hud_flag));
     rt::gfx_set_hud(ui::hud_draw, ui::hud_toggle);
-    if (!headless) rt::sysinfo_init(static_cast<pid_t>(gettid()), rt::gfx_adapter_info());
+    if (!headless) rt::sysinfo_init(rt::plat::tid(), rt::gfx_adapter_info());
 
     static ppc_ctx ctx{};
     ctx.mem = ram.data();

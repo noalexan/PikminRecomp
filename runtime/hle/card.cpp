@@ -2,6 +2,8 @@
 // slotN.bin (data), slotN.stat (raw 0x6C-byte CARDStat) and slotN.name. Slot B: no card.
 #include <sys/stat.h>
 
+#include "rt/platform.hpp"
+
 #include <cstdio>
 #include <cstring>
 #include <fstream>
@@ -117,8 +119,7 @@ extern "C" {
 void hle_CARDInit(ppc_ctx* c) {
     HLE_ENTRY(c, "CARDInit");
     if (!rt::g_card_dir.empty()) {
-        for (size_t i = 1; i <= rt::g_card_dir.size(); ++i)
-            if (i == rt::g_card_dir.size() || rt::g_card_dir[i] == '/') mkdir(rt::g_card_dir.substr(0, i).c_str(), 0755);
+        rt::plat::make_dirs(rt::g_card_dir);
         rt::log("card", "memory card in slot A: %s", rt::g_card_dir.c_str());
     }
 }

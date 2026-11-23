@@ -1,9 +1,14 @@
 #include "rt/crash.hpp"
 
+#ifdef _WIN32
+#include <windows.h>
+#include <signal.h>
+#else
 #include <execinfo.h>
 #include <signal.h>
 #include <ucontext.h>
 #include <unistd.h>
+#endif
 
 #include <atomic>
 #include <cstdlib>
@@ -24,7 +29,9 @@ uint32_t vi_retrace_count();
 
 namespace {
 std::atomic<bool> g_reported{false};
+#ifndef _WIN32
 alignas(16) char g_altstack[64 * 1024];
+#endif
 
 enum class Test { None, Segv, BadAccess, Abort, DoubleFault, Hang };
 Test g_test = Test::None;
@@ -49,6 +56,40 @@ void put_dec(const char* label, int64_t v) {
     put(fmt_dec(b, v));
 }
 
+#ifdef _WIN32
+const char* exception_name(DWORD code) {
+    switch (code) {
+        case EXCEPTION_ACCESS_VIOLATION: return "EXCEPTION_ACCESS_VIOLATION";
+        case EXCEPTION_ILLEGAL_INSTRUCTION: return "EXCEPTION_ILLEGAL_INSTRUCTION";
+        case EXCEPTION_INT_DIVIDE_BY_ZERO: return "EXCEPTION_INT_DIVIDE_BY_ZERO";
+        case EXCEPTION_STACK_OVERFLOW: return "EXCEPTION_STACK_OVERFLOW";
+        default: return "EXCEPTION";
+    }
+}
+
+LONG WINAPI on_exception(EXCEPTION_POINTERS* ep) {
+    const EXCEPTION_RECORD* r = ep ? ep->ExceptionRecord : nullptr;
+    CrashInfo info{r ? exception_name(r->ExceptionCode) : "EXCEPTION"};
+    info.is_signal = true;
+    if (r && r->ExceptionCode == EXCEPTION_ACCESS_VIOLATION && r->NumberParameters >= 2)
+        info.host_fault = reinterpret_cast<const void*>(r->ExceptionInformation[1]);
+    if (r) info.pc = r->ExceptionAddress;
+    crash_report(info);
+    return EXCEPTION_CONTINUE_SEARCH;  // Windows Error Reporting / debugger take it from here
+}
+
+void on_abort(int) {
+    crash_report(CrashInfo{"SIGABRT"});
+    _exit(3);
+}
+}  // namespace
+
+void crash_install() {
+    SetUnhandledExceptionFilter(on_exception);
+    signal(SIGABRT, on_abort);
+}
+
+#else
 const char* signal_name(int sig) {
     switch (sig) {
         case SIGSEGV: return "SIGSEGV";
@@ -87,6 +128,8 @@ void crash_install() {
     sigemptyset(&sa.sa_mask);
     for (int sig : {SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGABRT}) sigaction(sig, &sa, nullptr);
 }
+
+#endif
 
 bool crash_report(const CrashInfo& info) {
     if (g_reported.exchange(true)) return false;
@@ -135,11 +178,27 @@ bool crash_report(const CrashInfo& info) {
         put("\n");
     }
     put("backtrace:\n");
+#ifdef _WIN32
+    // Raw addresses with the module base: tools/resolve_bt.py maps them like Linux frames.
+    void* frames[64];
+    const int n = CaptureStackBackTrace(0, 64, frames, nullptr);
+    put_ptr("module base 0x", GetModuleHandleW(nullptr));
+    put("\n");
+    if (info.pc) {
+        put_ptr("  fault pc 0x", info.pc);
+        put("\n");
+    }
+    for (int i = 0; i < n; ++i) {
+        put_ptr("  0x", frames[i]);
+        put("\n");
+    }
+#else
     void* frames[64];
     int n = backtrace(frames, 64);
     if (info.pc && n > 2) frames[2] = info.pc;  // [0] here, [1] the handler, [2] the signal frame
     backtrace_symbols_fd(frames, n, 2);
     if (log_fd() >= 0) backtrace_symbols_fd(frames, n, log_fd());
+#endif
     put("recent events (last 256, oldest first; retrace channel name a b text):\n");
     trace_dump(256);
     if (!input_record_path().empty()) {

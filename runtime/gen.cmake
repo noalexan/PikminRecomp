@@ -44,13 +44,32 @@ target_link_libraries(pikmin_link_check PRIVATE pikmin_gen pikmin_stubs)
 # The game: generated code + runtime. pikmin_rt is linked whole so its strong hle_* definitions
 # always replace the weak generated stubs (a static archive would otherwise satisfy them with the
 # first weak definition it finds).
-add_library(pikmin_hle_stubs STATIC ${GEN_DIR}/hle_stubs.c)
+if (WIN32)
+    # COFF: no ELF-style weak override. Keep only the stubs pikmin_rt doesn't define, made strong.
+    add_custom_command(
+        OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/hle_stubs_strong.c
+        COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/tools/strong_hle_stubs.py ${CMAKE_NM}
+                $<TARGET_FILE:pikmin_rt> ${GEN_DIR}/hle_stubs.c ${CMAKE_CURRENT_BINARY_DIR}/hle_stubs_strong.c
+        DEPENDS pikmin_rt ${GEN_DIR}/hle_stubs.c ${PROJECT_SOURCE_DIR}/tools/strong_hle_stubs.py
+        COMMENT "Selecting HLE stubs not implemented by the runtime"
+        VERBATIM)
+    add_library(pikmin_hle_stubs STATIC ${CMAKE_CURRENT_BINARY_DIR}/hle_stubs_strong.c)
+else ()
+    add_library(pikmin_hle_stubs STATIC ${GEN_DIR}/hle_stubs.c)
+endif ()
 target_link_libraries(pikmin_hle_stubs PUBLIC pikmin_gen)
 # main.dol is baked into the binary (the runtime copies its sections into guest RAM at boot),
 # so no disc image is needed for the executable itself.
+if (WIN32)  # COFF: read-only data is .rdata, and there is no GNU-stack note
+    set(_dol_section ".section .rdata,\"dr\"")
+    set(_dol_note "")
+else ()
+    set(_dol_section ".section .rodata")
+    set(_dol_note ".section .note.GNU-stack,\"\",@progbits\n")
+endif ()
 file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/dol_blob.S.in
-     ".section .rodata\n.balign 32\n.global pikmin_dol_start\n.global pikmin_dol_end\n"
-     "pikmin_dol_start:\n.incbin \"@PIKMIN_DOL@\"\npikmin_dol_end:\n.section .note.GNU-stack,\"\",@progbits\n")
+     "${_dol_section}\n.balign 32\n.global pikmin_dol_start\n.global pikmin_dol_end\n"
+     "pikmin_dol_start:\n.incbin \"@PIKMIN_DOL@\"\npikmin_dol_end:\n${_dol_note}")
 configure_file(${CMAKE_CURRENT_BINARY_DIR}/dol_blob.S.in ${CMAKE_CURRENT_BINARY_DIR}/dol_blob.S @ONLY)
 set_source_files_properties(${CMAKE_CURRENT_BINARY_DIR}/dol_blob.S PROPERTIES OBJECT_DEPENDS ${PIKMIN_DOL})
 enable_language(ASM)
@@ -62,8 +81,28 @@ file(RELATIVE_PATH PIKMIN_DATA_REL ${CMAKE_INSTALL_FULL_BINDIR} ${CMAKE_INSTALL_
 target_compile_definitions(pikmin PRIVATE PIKMIN_DATA_REL="${PIKMIN_DATA_REL}"
                            PIKMIN_SOURCE_DATA="${PROJECT_SOURCE_DIR}/orig/GPIP01")
 target_compile_options(pikmin PRIVATE -O2 -Wall -Wextra $<$<CONFIG:Release>:-g1>)
-target_link_options(pikmin PRIVATE -rdynamic)  # readable f_<addr> frames in fatal backtraces
+if (WIN32)
+    # One self-contained .exe: no libstdc++/libgcc/winpthread DLLs to ship next to it.
+    target_link_options(pikmin PRIVATE -static-libgcc -static-libstdc++ -Wl,-Bstatic,--whole-archive -lwinpthread -Wl,--no-whole-archive,-Bdynamic)
+else ()
+    target_link_options(pikmin PRIVATE -rdynamic)  # readable f_<addr> frames in fatal backtraces
+endif ()
 target_link_libraries(pikmin PRIVATE "$<LINK_LIBRARY:WHOLE_ARCHIVE,pikmin_rt>" pikmin_gen pikmin_hle_stubs)
+
+if (WIN32)
+    # Windows: one folder (cmake --install build/win --prefix DIR): pikmin.exe, the MinGW DLLs it
+    # needs (tools/mingw_dlls.sh) and data/ (found next to the .exe). Nintendo data: never distribute.
+    add_custom_command(TARGET pikmin POST_BUILD
+        COMMAND ${PROJECT_SOURCE_DIR}/tools/mingw_dlls.sh $<TARGET_FILE:pikmin>
+        COMMENT "Copying the DLLs pikmin.exe needs" VERBATIM)
+    install(TARGETS pikmin RUNTIME DESTINATION .)
+    install(CODE "file(GLOB _dlls \"${CMAKE_CURRENT_BINARY_DIR}/*.dll\")
+                  file(INSTALL \${_dlls} DESTINATION \"\${CMAKE_INSTALL_PREFIX}\")")
+    set(PIKMIN_ORIG ${PROJECT_SOURCE_DIR}/orig/GPIP01)
+    install(FILES ${PIKMIN_ORIG}/sys/boot.bin ${PIKMIN_ORIG}/sys/fst.bin ${PIKMIN_ORIG}/sys/paths.txt DESTINATION data/sys)
+    install(DIRECTORY ${PIKMIN_ORIG}/files DESTINATION data)
+    return()
+endif ()
 
 # Installation: binary, desktop entry and icon (e.g. cmake --install build/cmake with
 # -DCMAKE_INSTALL_PREFIX=$HOME/.local). The desktop entry launches `pikmin` without arguments,

@@ -20,7 +20,9 @@
 
 namespace rt {
 
+#ifndef _WIN32  // Windows builds always have the GX shims' definition (no weak override in COFF)
 __attribute__((weak)) void gx_close_open_draw() {}
+#endif
 // Weak: graphics unit tests link without VI (then the present count is used).
 __attribute__((weak)) uint32_t vi_retrace_count();
 

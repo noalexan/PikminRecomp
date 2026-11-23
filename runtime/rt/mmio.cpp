@@ -1,3 +1,4 @@
+#include "rt/weak.hpp"
 #include "rt/mmio.hpp"
 
 #include <cstdio>
@@ -32,14 +33,14 @@ uint64_t mmio_wgpipe_bytes() { return g_wgpipe_bytes; }
 
 extern "C" {
 
-__attribute__((weak)) uint32_t ppc_mmio_read(uint32_t phys, int size) {
+PIKMIN_WEAK uint32_t ppc_mmio_read(uint32_t phys, int size) {
     rt::note(phys, "read");
     auto it = rt::regs().find(phys);
     uint32_t v = it == rt::regs().end() ? 0 : it->second;
     return size == 4 ? v : size == 2 ? (v & 0xFFFF) : (v & 0xFF);
 }
 
-__attribute__((weak)) void ppc_mmio_write(uint32_t phys, uint32_t value, int size) {
+PIKMIN_WEAK void ppc_mmio_write(uint32_t phys, uint32_t value, int size) {
     if (phys == rt::kWgPipe) {
         rt::g_wgpipe_bytes += static_cast<uint64_t>(size);
 #ifdef PIKMIN_GRAPHICS

@@ -13,6 +13,8 @@
 #include <ctime>
 #include <vector>
 
+#include "rt/platform.hpp"
+
 namespace rt {
 namespace {
 std::string g_path;
@@ -30,16 +32,7 @@ void write_all(int fd, const char* s, size_t n) {
     }
 }
 
-bool mkdirs(const std::string& dir) {
-    for (size_t i = 1; i <= dir.size(); ++i) {
-        if (i == dir.size() || dir[i] == '/') {
-            std::string p = dir.substr(0, i);
-            if (::mkdir(p.c_str(), 0755) != 0 && errno != EEXIST) return false;
-        }
-    }
-    struct stat st{};
-    return ::stat(dir.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
-}
+bool mkdirs(const std::string& dir) { return plat::make_dirs(dir); }
 
 void rotate(const std::string& dir, int keep) {
     struct Entry {
@@ -65,12 +58,8 @@ void rotate(const std::string& dir, int keep) {
 }  // namespace
 
 std::string log_dir() {
-    const char* xdg = std::getenv("XDG_STATE_HOME");
-    std::string base;
-    if (xdg && *xdg) base = xdg;
-    else if (const char* home = std::getenv("HOME"); home && *home) base = std::string(home) + "/.local/state";
-    else return {};
-    return base + "/pikminrecomp/logs";
+    const std::string base = plat::user_dir(plat::UserDir::State);
+    return base.empty() ? std::string() : base + "/pikminrecomp/logs";
 }
 
 bool log_open(const std::string& dir, int keep) {
@@ -81,11 +70,10 @@ bool log_open(const std::string& dir, int keep) {
     rotate(dir, keep);
     char stamp[32];
     std::time_t now = std::time(nullptr);
-    std::tm tm{};
-    localtime_r(&now, &tm);
+    const std::tm tm = plat::local_time(now);
     std::strftime(stamp, sizeof stamp, "%Y%m%d-%H%M%S", &tm);
-    std::string path = dir + "/pikmin-" + stamp + "-" + std::to_string(::getpid()) + ".log";
-    int fd = ::open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
+    std::string path = dir + "/pikmin-" + stamp + "-" + std::to_string(plat::pid()) + ".log";
+    int fd = plat::open_write(path);
     if (fd < 0) {
         std::fprintf(stderr, "[log] cannot open %s; logging to stderr only\n", path.c_str());
         return false;

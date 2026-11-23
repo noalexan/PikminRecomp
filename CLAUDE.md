@@ -171,33 +171,34 @@ python3 -m recomp --dol orig/GPIP01/sys/main.dol --map orig/GPIP01/files/dataDir
 - **Lookup order:** `--disc PATH` (image or tree), then `disc = "..."` in config, then `<bindir>/../share/pikminrecomp/data` (installed), then `orig/GPIP01` in the checkout. So `build/cmake/pikmin` and the installed `pikmin` both run with no arguments.
 - **`cmake --install`** copies the tree (about 655 MB) to `${CMAKE_INSTALL_DATADIR}/pikminrecomp/data`. The binary and the data are Nintendo's: keep them out of git and never distribute them.
 
-## Planned: Windows build
+## Windows build (cross-compiled from Linux)
 
-Not implemented yet. Crash diagnostics (see "Debugging the game") are done; the port needs the same. Target: native Windows x64 build with MSVC-compatible toolchain **clang-cl** (or MinGW-w64 clang), D3D12 or Vulkan through Dawn, same game data layout. Linux stays the primary platform.
+`pikmin.exe` is built on this machine with Fedora's MinGW-w64 GCC; Linux stays the primary platform.
+Design: `docs/superpowers/specs/2026-11-23-windows-port-design.md`.
 
-1. **Toolchain and recompiler output.**
-   - Use clang (clang-cl or MinGW clang) rather than plain MSVC. The generated C relies on GCC/Clang extensions: `__attribute__((weak))` stubs, `-fwrapv`, `-ffp-contract=off` and `-fno-strict-aliasing`, plus the `.incbin` assembly blob.
-   - **Weak symbols:** COFF has no ELF-style weak definitions. Have `recomp/program.py` emit stubs only for functions with no strong `hle_*` definition. The list of strong ones comes from a scan of `runtime/` (`nm` on `pikmin_rt` at build time) or a generated registry. That also removes the need for `WHOLE_ARCHIVE`, and works on Linux too.
-   - **DOL blob:** replace `.incbin` with C23 `#embed`, or a generated C array, which works on both platforms.
-2. **Fibers.** `rt/sched.cpp` uses `ucontext`. Put a small fiber interface (`create`, `switch_to`, `destroy`) in front of it: ucontext on Linux, Win32 Fibers (`CreateFiberEx`, `SwitchToFiber`) on Windows. Keep the stack-size and stack-reuse semantics, since `OSThread` re-use retires old entries.
-3. **POSIX replacements**, each behind `rt/platform_*.cpp`:
-   - **Disc:** `pread`/`open` → `CreateFileW` + `ReadFile` with `OVERLAPPED` offsets. UTF-8 to UTF-16 paths matter for the Shift-JIS file names.
-   - **Clock:** `clock_gettime`/`CLOCK_MONOTONIC_COARSE` → `QueryPerformanceCounter`. Use `timeBeginPeriod(1)` or a high-resolution waitable timer for frame pacing.
-   - **Executable path:** `/proc/self/exe` → `GetModuleFileNameW`.
-   - **Directories:** `mkdir` → `CreateDirectoryW`. XDG paths → `%APPDATA%\pikminrecomp` (config, saves) and `%LOCALAPPDATA%\pikminrecomp\logs`.
-   - **Watchdog:** today it is a signal sent to the game thread. Use `SuspendThread` + `GetThreadContext`, or a flag checked at safe points.
-   - **Crash handler:** `SetUnhandledExceptionFilter` plus `MiniDumpWriteDump`, written next to the log. Backtraces via `CaptureStackBackTrace` + DbgHelp `SymFromAddr`, which needs a PDB.
-   - **Exit:** `rt::exit_process()` → `TerminateProcess`/`_exit`, with the same "no static destructors" rule.
-4. **Dependencies.** SDL3 comes from vcpkg, or from aurora's bundled build since there is no dnf. Dawn builds with its D3D12 backend; Vulkan is optional. Keep the aurora pin and patches; check that patch 0001 has no Linux-only code.
-5. **Build.**
-   - CMake + Ninja under a "x64 Native Tools" shell.
-   - Python 3 runs the recompiler. `powerpc64-linux-gnu-as` is only needed for the semantics tests, which can be skipped on Windows; or run them in WSL.
-   - `tools/extract_gcm.py` and `fst_paths.py` already work there.
-6. **Packaging.** `cmake --install` to a folder: `pikmin.exe`, SDL3.dll, the data tree, and a Start-menu shortcut via an optional small script instead of the `.desktop` file. Steam: add the `.exe` as a non-Steam game. The Nintendo data rule still applies: never distribute it.
-7. **CI-free verification.**
-   - The headless `--fast --frames 600` boot and the offscreen title screenshot should match the Linux output.
-   - The WAV dump should be byte-identical. Generated code is deterministic: `-ffp-contract=off`, no FMA, and the same float semantics under clang on x64.
-   - Do the screenshot comparison per GPU backend: D3D12 output may differ slightly, so compare visually, not by hash.
+```sh
+# once: sudo dnf install mingw64-gcc-c++ mingw64-SDL3 mingw64-winpthreads-static mingw64-vulkan-headers \
+#           mingw64-vulkan-loader mingw64-libpng mingw64-zlib mingw64-zstd mingw64-freetype wine
+D=$PWD/build/cmake/_deps
+cmake -S . -B build/win -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=/usr/share/mingw/toolchain-mingw64.cmake \
+    $(for n in aurora dawn imgui nlohmann_json sqlite3 tracy xxhash; do echo -DFETCHCONTENT_SOURCE_DIR_$(echo $n | tr a-z A-Z)=$D/$n-src; done)
+cmake --build build/win --target pikmin            # also copies the DLLs it needs next to it
+cmake --install build/win --prefix DIR              # DIR/pikmin.exe + DLLs + DIR/data (Nintendo data: never distribute)
+WINEPREFIX=... wine build/win/pikmin.exe --headless --fast --frames 600 --disc Z:/path/game.iso   # smoke test
+```
+- **Graphics:** Dawn's Vulkan backend only (`extern/aurora.cmake`: D3D11/D3D12 and Windows UI surfaces need
+  Windows SDK headers MinGW lacks). `extern/mingw-shim/` maps MSVC header spellings (`Windows.h`, `Wbemidl.h`);
+  aurora's MSVC link names (`DXGI.lib`, `comsuppw.lib`) are rewritten after it is added. fmt is fetched (no MinGW package).
+- **Weak symbols:** COFF has no ELF-style weak override, so on Windows `pikmin_hle_stubs` is built from
+  `tools/strong_hle_stubs.py` (the generated stubs minus every `hle_*` the runtime defines, made strong), and the
+  runtime's default hooks use `PIKMIN_WEAK` (`rt/weak.hpp`, empty on Windows).
+- **OS layer:** `rt/fiber.hpp` (ucontext / Win32 fibers), `rt/platform.hpp` (files with `pread` via `ReadFile`
+  offsets and UTF-16 paths, dirs, pid/tid, exe path, `dlopen`/`LoadLibrary`, user dirs: `%APPDATA%\pikminrecomp`
+  for config/saves, `%LOCALAPPDATA%\pikminrecomp\logs`). Crash reports use an unhandled-exception filter and
+  `CaptureStackBackTrace` (raw addresses + module base); the watchdog reports from its own thread. CPU % shows n/a.
+- **Verified here:** headless `--fast` boot identical to Linux (600 frames); offscreen title screenshot under Wine
+  (Vulkan → host GPU); folder install boots with no arguments. **Not verified:** a real Windows machine (window,
+  input, audio, fullscreen).
 
 ## Conventions
 

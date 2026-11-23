@@ -1,7 +1,8 @@
 #include "rt/sysinfo.hpp"
 
-#include <dlfcn.h>
+#ifndef _WIN32
 #include <unistd.h>
+#endif
 
 #include <algorithm>
 #include <cctype>
@@ -10,6 +11,8 @@
 #include <fstream>
 #include <sstream>
 #include <vector>
+
+#include "rt/platform.hpp"
 
 namespace rt {
 namespace {
@@ -41,13 +44,17 @@ struct Nvml {
     Utilization util = nullptr;
 
     bool open(const std::string& want) {
-        lib = dlopen("libnvidia-ml.so.1", RTLD_NOW | RTLD_LOCAL);
+#ifdef _WIN32
+        lib = plat::dl_open("nvml.dll");
+#else
+        lib = plat::dl_open("libnvidia-ml.so.1");
+#endif
         if (!lib) return false;
-        auto init = reinterpret_cast<Init>(dlsym(lib, "nvmlInit_v2"));
-        auto count = reinterpret_cast<Count>(dlsym(lib, "nvmlDeviceGetCount_v2"));
-        auto handle = reinterpret_cast<Handle>(dlsym(lib, "nvmlDeviceGetHandleByIndex_v2"));
-        auto name = reinterpret_cast<Name>(dlsym(lib, "nvmlDeviceGetName"));
-        util = reinterpret_cast<Utilization>(dlsym(lib, "nvmlDeviceGetUtilizationRates"));
+        auto init = reinterpret_cast<Init>(plat::dl_sym(lib, "nvmlInit_v2"));
+        auto count = reinterpret_cast<Count>(plat::dl_sym(lib, "nvmlDeviceGetCount_v2"));
+        auto handle = reinterpret_cast<Handle>(plat::dl_sym(lib, "nvmlDeviceGetHandleByIndex_v2"));
+        auto name = reinterpret_cast<Name>(plat::dl_sym(lib, "nvmlDeviceGetName"));
+        util = reinterpret_cast<Utilization>(plat::dl_sym(lib, "nvmlDeviceGetUtilizationRates"));
         unsigned n = 0;
         if (!init || !count || !handle || !name || !util || init() != 0 || count(&n) != 0) return false;
         for (unsigned i = 0; i < n; ++i) {  // the device Dawn uses, by name
@@ -79,7 +86,7 @@ std::string amd_busy_path(uint32_t vendor, uint32_t device) {
     return {};
 }
 
-pid_t g_tid = 0;
+long g_tid = 0;
 GpuSource g_source = GpuSource::None;
 Nvml g_nvml;
 std::string g_amd_path;
@@ -103,7 +110,7 @@ GpuSource pick_gpu_source(uint32_t vendor, bool nvml, bool amd) {
     return GpuSource::None;
 }
 
-void sysinfo_init(pid_t game_tid, const GpuInfo& gpu) {
+void sysinfo_init(long game_tid, const GpuInfo& gpu) {
     g_tid = game_tid;
     const bool nvml = gpu.vendor == 0x10de && g_nvml.open(gpu.name);
     if (gpu.vendor == 0x1002) g_amd_path = amd_busy_path(gpu.vendor, gpu.device);
@@ -112,7 +119,11 @@ void sysinfo_init(pid_t game_tid, const GpuInfo& gpu) {
 
 const SysSample& sysinfo_sample(double now) {
     if (g_at >= 0 && now - g_at < 0.5) return g_sample;
+#ifdef _WIN32
+    const double hz = 100;  // procfs isn't there: the reads below fail and CPU shows n/a
+#else
     const double hz = static_cast<double>(sysconf(_SC_CLK_TCK));
+#endif
     const double proc = cpu_ticks_from_stat(read_file("/proc/self/stat"));
     const double thread = g_tid ? cpu_ticks_from_stat(read_file("/proc/self/task/" + std::to_string(g_tid) + "/stat")) : -1;
     if (g_at >= 0 && now > g_at) {

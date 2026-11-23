@@ -3,7 +3,6 @@
 #pragma once
 #include <cstdint>
 #include <string>
-#include <sys/types.h>
 
 namespace rt {
 
@@ -21,7 +20,7 @@ GpuSource pick_gpu_source(uint32_t vendor, bool nvml_available, bool amd_sysfs_a
 struct SysSample {
     double cpu_pct = -1, game_thread_pct = -1, gpu_busy_pct = -1;
 };
-void sysinfo_init(pid_t game_tid, const GpuInfo& gpu);
+void sysinfo_init(long game_tid, const GpuInfo& gpu);
 const SysSample& sysinfo_sample(double now_s);
 
 }  // namespace rt

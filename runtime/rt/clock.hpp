@@ -1,5 +1,9 @@
 // Guest time base (40.5 MHz, epoch 2000-01-01) in real or fast (virtual) mode, plus timed events.
 #pragma once
+#include <time.h>
+#ifndef CLOCK_MONOTONIC_COARSE  // Windows (winpthreads clock_gettime): no coarse clock
+#define CLOCK_MONOTONIC_COARSE CLOCK_MONOTONIC
+#endif
 #include <cstdint>
 #include <functional>
 

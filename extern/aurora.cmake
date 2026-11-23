@@ -15,6 +15,22 @@ set(AURORA_ENABLE_TESTS OFF CACHE BOOL "" FORCE)
 set(AURORA_SDL3_PROVIDER system CACHE STRING "" FORCE)
 set(AURORA_DAWN_PROVIDER vendor CACHE STRING "" FORCE)
 set(AURORA_DAWN_LINKAGE static CACHE STRING "" FORCE)
+if (MINGW)
+    # Cross-compiling with MinGW-w64 on Linux: <Windows.h> spelled as MSVC code does, and abseil's
+    # open(..., O_NONBLOCK) (MinGW has no O_NONBLOCK; the flag is meaningless for files on Windows).
+    include_directories(BEFORE SYSTEM ${CMAKE_CURRENT_LIST_DIR}/mingw-shim)
+    add_compile_definitions(O_NONBLOCK=0)
+    # Dawn's D3D11/D3D12 backends need Windows SDK headers MinGW lacks (DXProgrammableCapture.h,
+    # dxcapi...): Vulkan only.
+    set(DAWN_ENABLE_D3D11 OFF CACHE BOOL "" FORCE)
+    set(DAWN_ENABLE_D3D12 OFF CACHE BOOL "" FORCE)
+    set(DAWN_USE_WINDOWS_UI OFF CACHE BOOL "" FORCE)  # CoreWindow/SwapChainPanel surfaces: D3D headers
+endif ()
+if (WIN32)
+    # Cross builds (MinGW): protobuf (Tint IR binary / fuzzers only) would need a host protoc.
+    set(DAWN_BUILD_PROTOBUF OFF CACHE BOOL "" FORCE)
+    set(TINT_BUILD_IR_BINARY OFF CACHE BOOL "" FORCE)
+endif ()
 
 # Hash of every patch's contents: part of the declaration, so editing a patch re-populates aurora
 # (FetchContent otherwise only notices changes to the declaration itself).
@@ -41,3 +57,19 @@ FetchContent_Declare(aurora
     EXCLUDE_FROM_ALL
 )
 FetchContent_MakeAvailable(aurora)
+
+if (MINGW)
+    # aurora names MSVC libraries (comsuppw.lib, DXGI.lib, ...): point them at MinGW's. comsuppw
+    # isn't needed (MinGW's comutil.h defines its helpers inline).
+    foreach (_prop LINK_LIBRARIES INTERFACE_LINK_LIBRARIES)
+        get_target_property(_libs aurora_core ${_prop})
+        if (_libs)
+            list(REMOVE_ITEM _libs comsuppw.lib "$<LINK_ONLY:comsuppw.lib>")
+            list(TRANSFORM _libs REPLACE "DXGI\\.lib" "dxgi")
+            list(TRANSFORM _libs REPLACE "wbemuuid\\.lib" "wbemuuid")
+            list(TRANSFORM _libs REPLACE "ntdll\\.lib" "ntdll")
+            set_target_properties(aurora_core PROPERTIES ${_prop} "${_libs}")
+        endif ()
+    endforeach ()
+endif ()
+

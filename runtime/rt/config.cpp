@@ -5,6 +5,8 @@
 #include <fstream>
 #include <sstream>
 
+#include "rt/platform.hpp"
+
 namespace rt {
 namespace {
 std::string trim(const std::string& s) {
@@ -109,8 +111,8 @@ Config parse_config(const std::string& text) {
 }
 
 std::string default_config_path() {
-    const char* xdg = std::getenv("XDG_CONFIG_HOME");
-    std::string base = xdg && *xdg ? xdg : std::string(std::getenv("HOME") ? std::getenv("HOME") : ".") + "/.config";
+    std::string base = plat::user_dir(plat::UserDir::Config);
+    if (base.empty()) base = ".";
     return base + "/pikminrecomp/config.toml";
 }
 

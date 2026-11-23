@@ -1,4 +1,5 @@
 // Default host hooks required by generated code. Weak so unit tests can substitute their own.
+#include "rt/weak.hpp"
 #include <cinttypes>
 #include <cstdio>
 #include <cstdlib>
@@ -11,7 +12,7 @@
 
 extern "C" {
 
-__attribute__((weak)) void ppc_bad_access(uint32_t ea) {
+PIKMIN_WEAK void ppc_bad_access(uint32_t ea) {
     rt::CrashInfo info{"ppc_bad_access"};
     info.has_guest_addr = true;
     info.guest_addr = ea;
@@ -19,7 +20,7 @@ __attribute__((weak)) void ppc_bad_access(uint32_t ea) {
     std::abort();
 }
 
-__attribute__((weak)) void ppc_unimpl(ppc_ctx*, uint32_t addr, uint32_t word) {
+PIKMIN_WEAK void ppc_unimpl(ppc_ctx*, uint32_t addr, uint32_t word) {
     rt::log("fatal", "ppc_unimpl: instruction 0x%08" PRIx32 " at 0x%08" PRIx32, word, addr);
     rt::CrashInfo info{"ppc_unimpl"};
     info.has_guest_addr = true;
@@ -28,7 +29,7 @@ __attribute__((weak)) void ppc_unimpl(ppc_ctx*, uint32_t addr, uint32_t word) {
     std::abort();
 }
 
-__attribute__((weak)) void ppc_hle_missing(const char* name, uint32_t addr) {
+PIKMIN_WEAK void ppc_hle_missing(const char* name, uint32_t addr) {
     rt::log("fatal", "ppc_hle_missing: %s (0x%08" PRIx32 ") has no host implementation", name, addr);
     rt::CrashInfo info{"ppc_hle_missing"};
     info.has_guest_addr = true;
@@ -37,7 +38,7 @@ __attribute__((weak)) void ppc_hle_missing(const char* name, uint32_t addr) {
     std::abort();
 }
 
-__attribute__((weak)) uint64_t ppc_timebase(void) { return rt::clock().ticks(); }
+PIKMIN_WEAK uint64_t ppc_timebase(void) { return rt::clock().ticks(); }
 
 // A guest busy-wait iteration: deliver due events/interrupts and let other threads run.
 void ppc_poll(ppc_ctx* c, uint32_t addr) {

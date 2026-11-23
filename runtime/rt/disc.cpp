@@ -9,6 +9,8 @@
 #include <cstring>
 #include <fstream>
 
+#include "rt/platform.hpp"
+
 namespace rt {
 namespace {
 constexpr uint32_t kMagic = 0xC2339F3D;
@@ -61,7 +63,7 @@ size_t Disc::read(uint64_t offset, std::span<uint8_t> out) const {
     if (fd_ >= 0) {
         size_t done = 0;
         while (done < out.size()) {
-            ssize_t n = pread(fd_, out.data() + done, out.size() - done, static_cast<off_t>(offset + done));
+            const int64_t n = plat::pread(fd_, out.data() + done, out.size() - done, offset + done);
             if (n <= 0) break;
             done += static_cast<size_t>(n);
         }
@@ -84,11 +86,11 @@ size_t Disc::read(uint64_t offset, std::span<uint8_t> out) const {
         if (it != spans_.begin() && pos < std::prev(it)->offset + std::prev(it)->length) {
             const Span& s = *std::prev(it);
             size_t n = std::min<uint64_t>(want, s.offset + s.length - pos);
-            int fd = ::open(s.path.c_str(), O_RDONLY | O_CLOEXEC);
+            int fd = plat::open_read(s.path);
             if (fd < 0) break;
             size_t got = 0;
             while (got < n) {
-                ssize_t r = pread(fd, out.data() + done + got, n - got, static_cast<off_t>(pos - s.offset + got));
+                const int64_t r = plat::pread(fd, out.data() + done + got, n - got, pos - s.offset + got);
                 if (r <= 0) break;
                 got += static_cast<size_t>(r);
             }
@@ -120,16 +122,14 @@ std::vector<uint8_t> slurp(const std::string& path) {
 }  // namespace
 
 Disc Disc::open(const std::string& path) {
-    struct stat st{};
-    if (stat(path.c_str(), &st) == 0 && S_ISDIR(st.st_mode)) return open_dir(path);
+    if (plat::is_dir(path)) return open_dir(path);
     Disc d;
-    d.fd_ = ::open(path.c_str(), O_RDONLY | O_CLOEXEC);
+    d.fd_ = plat::open_read(path);
     if (d.fd_ < 0) throw DiscError(path + ": cannot open disc image: " + std::strerror(errno));
     d.header_.resize(0x440);
     if (d.read(0, d.header_) != d.header_.size()) throw DiscError(path + ": too small to be a GameCube disc image");
     check_header(path, d.header_);
-    fstat(d.fd_, &st);
-    const uint64_t image_size = static_cast<uint64_t>(st.st_size);
+    const uint64_t image_size = static_cast<uint64_t>(std::max<int64_t>(0, plat::file_size(d.fd_)));
     uint32_t fst_off = be32(&d.header_[0x424]), fst_size = be32(&d.header_[0x428]);
     if (static_cast<uint64_t>(fst_off) + fst_size > image_size) throw DiscError(path + ": truncated disc image (file table)");
     std::vector<uint8_t> fst(fst_size);
