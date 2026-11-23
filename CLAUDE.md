@@ -200,6 +200,26 @@ WINEPREFIX=... wine build/win/pikmin.exe --headless --fast --frames 600 --disc Z
   (Vulkan → host GPU); folder install boots with no arguments. **Not verified:** a real Windows machine (window,
   input, audio, fullscreen).
 
+## Launcher (`launcher/`)
+
+The only published artifact: a Qt 6/QML app (Forest "liquid glass" UI) that self-updates from GitHub
+releases of `noalexan/PikminRecomp`, checks the toolchain and the disc (`GPIP01`, SHA-1 of `main.dol`
+and `fst.bin` in `src/core/rom.hpp`), downloads the source of its own version (`v<ver>` tag), extracts
+the disc, builds and installs the game into `~/.local/share/pikminrecomp-launcher/` (`%LOCALAPPDATA%`),
+and plays it. Design: `docs/superpowers/specs/2026-11-23-launcher-design.md`.
+
+```sh
+cmake -S launcher -B build/launcher -G Ninja && cmake --build build/launcher && build/launcher/core_test
+QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=rhi QSG_RHI_BACKEND=opengl \
+    build/launcher/pikmin-launcher --screenshot out.png --preview ready|building    # look, no network/build
+PIKMIN_LAUNCHER_SOURCE=$PWD build/launcher/pikmin-launcher --auto-build ISO     # build this checkout, quit
+launcher/packaging/windows.sh 0.1.0     # -> build/PikminRecompLauncher-0.1.0-windows.zip (+ sha256 line)
+launcher/packaging/appimage.sh 0.1.0    # -> ...-x86_64.AppImage (needs linuxdeploy + qt plugin in build/tools)
+```
+Releases: tag `vX.Y.Z`, attach both files, and put their `sha256 <file> <hex>` lines in the release
+notes (the launcher verifies them when self-updating). Offscreen screenshots need the OpenGL RHI
+backend: the default software renderer skips MultiEffect (no blur).
+
 ## Conventions
 
 - Install system dependencies with `dnf`. Anything else is project-local (`build/`) or root-owned in `/opt` (Ghidra). Never install into `$HOME`.

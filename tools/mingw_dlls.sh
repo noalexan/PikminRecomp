@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Copy the MinGW DLLs an .exe needs (recursively) next to it.
-# usage: tools/mingw_dlls.sh EXE [SYSROOT_BIN]
+# usage: [OUT_DIR=dir] tools/mingw_dlls.sh EXE_OR_DLL [SYSROOT_BIN]   (default: next to EXE)
 set -eu
-exe="$1"; bin="${2:-/usr/x86_64-w64-mingw32/sys-root/mingw/bin}"; dir="$(dirname "$exe")"
+exe="$1"; bin="${2:-/usr/x86_64-w64-mingw32/sys-root/mingw/bin}"; dir="${OUT_DIR:-$(dirname "$exe")}"
 todo=("$exe"); declare -A seen
 while ((${#todo[@]})); do
     f="${todo[0]}"; todo=("${todo[@]:1}")

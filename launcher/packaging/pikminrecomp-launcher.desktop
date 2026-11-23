@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Pikmin Recomp Launcher
+Comment=Recompile and play Pikmin from your own disc
+Exec=pikmin-launcher
+Icon=pikminrecomp-launcher
+Categories=Game;
