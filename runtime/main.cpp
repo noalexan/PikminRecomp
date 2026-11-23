@@ -21,6 +21,7 @@
 #include "rt/boot.hpp"
 #include "rt/clock.hpp"
 #include "rt/config.hpp"
+#include "rt/crash.hpp"
 #include "rt/diag.hpp"
 #include "rt/trace.hpp"
 #include "rt/disc.hpp"
@@ -82,18 +83,17 @@ std::string default_data_dir() {
 
 pthread_t g_game_thread;
 
-// Runs on the game thread when the watchdog fires: show where it is stuck, then exit.
+char g_watchdog_reason[64];
+
+// Runs on the game thread when the watchdog fires: report where it is stuck, then exit.
 void on_watchdog_signal(int) {
-    void* frames[48];
-    int n = backtrace(frames, 48);
-    static const char kHead[] = "watchdog: game thread backtrace:\n";
-    write(2, kHead, sizeof kHead - 1);
-    backtrace_symbols_fd(frames, n, 2);
+    rt::crash_report(rt::CrashInfo{g_watchdog_reason});
     std::_Exit(3);
 }
 
 void start_watchdog(int seconds) {
     g_game_thread = pthread_self();
+    std::snprintf(g_watchdog_reason, sizeof g_watchdog_reason, "watchdog: no retrace for %d s", seconds);
     signal(SIGUSR2, on_watchdog_signal);
     std::thread([seconds] {
         uint32_t last = rt::vi_retrace_count();
@@ -106,8 +106,6 @@ void start_watchdog(int seconds) {
                 since = std::chrono::steady_clock::now();
             } else if (std::chrono::steady_clock::now() - since > std::chrono::seconds(seconds)) {
                 std::fflush(stdout);
-                std::fprintf(stderr, "watchdog: no retrace for %d s; last HLE %s called from lr 0x%08x\n", seconds,
-                             rt::current_function.name, rt::current_function.lr);
                 pthread_kill(g_game_thread, SIGUSR2);
                 std::this_thread::sleep_for(std::chrono::seconds(2));
                 std::_Exit(3);
@@ -121,6 +119,7 @@ void open_run_log(int argc, char** argv, const rt::Config& cfg, const enh::Setti
                   const char* mode, bool fast) {
     rt::log_open(rt::log_dir());
     rt::trace_init();
+    rt::crash_install();
     std::string cmd;
     for (int i = 0; i < argc; ++i) cmd += (i ? " " : "") + std::string(argv[i]);
     rt::log_file_only("run", "pikmin %s (%s)", rt::kBuildHash, rt::kBuildType);
@@ -175,6 +174,9 @@ int main(int argc, char** argv) {
         else if (a == "--fast") fast = true;
         else if (a == "--frames") frames = static_cast<uint32_t>(std::stoul(next()));
         else if (a == "--watchdog") watchdog = std::stoi(next());
+        else if (a == "--crash-test") {  // tests only: crash on purpose (see rt/crash.hpp)
+            if (!rt::crash_test_arm(next().c_str())) fail("--crash-test expects segv|bad_access|abort|double_fault|hang");
+        }
         else if (a == "--config") config_path = next();
         else if (a == "--aspect") aspect_arg = next();
         else if (a == "--target-fps") fps_arg = next();

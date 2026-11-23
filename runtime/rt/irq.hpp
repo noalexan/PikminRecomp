@@ -21,6 +21,7 @@ public:
     void deliver();          // runs queued callbacks if allowed
     bool in_callback() const { return in_callback_; }
     bool pending() const { return !queue_.empty(); }
+    const ppc_ctx* ctx() const { return &ctx_; }
 
 private:
     void run_queue();

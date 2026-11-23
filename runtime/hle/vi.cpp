@@ -4,6 +4,7 @@
 #include <cstdlib>
 
 #include "rt/clock.hpp"
+#include "rt/crash.hpp"
 #include "rt/gfx.hpp"
 #include "rt/log.hpp"
 #include "rt/guest.hpp"
@@ -24,6 +25,7 @@ bool g_running = false;
 void retrace() {
     ++g_count;
     rt::g_trace_retrace = g_count.load(std::memory_order_relaxed);
+    rt::crash_test_check(rt::g_trace_retrace);
     if (g_frame_limit && g_count >= g_frame_limit) {
         rt::log("vi", "frame limit %u reached", g_frame_limit);
         rt::exit_process(0);
