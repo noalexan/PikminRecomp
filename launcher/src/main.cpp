@@ -16,6 +16,7 @@ int main(int argc, char** argv) {
     QGuiApplication::setApplicationName("Pikmin Recomp Launcher");
     QGuiApplication::setApplicationVersion(PIKMIN_LAUNCHER_VERSION);
     QQuickStyle::setStyle("Basic");  // our own look on top of the plain controls
+    QGuiApplication::setWindowIcon(QIcon(":/assets/pikminrecomp-launcher-256.png"));
 
     QString shot, preview, auto_iso;
     const QStringList args = app.arguments();

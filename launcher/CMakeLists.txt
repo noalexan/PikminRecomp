@@ -24,6 +24,7 @@ set_tests_properties(core_test PROPERTIES SKIP_RETURN_CODE 77)
 
 qt_add_executable(pikmin-launcher src/main.cpp src/app/launcher.cpp)
 target_link_libraries(pikmin-launcher PRIVATE launcher_core Qt6::Network Qt6::Gui Qt6::Quick Qt6::QuickControls2)
+qt_add_resources(pikmin-launcher icon PREFIX / FILES assets/pikminrecomp-launcher-256.png)  # window icon
 qt_add_qml_module(pikmin-launcher URI PikminLauncher VERSION 1.0
     QML_FILES qml/Main.qml qml/GlassPanel.qml qml/StatusRow.qml qml/PillButton.qml qml/ForestBackground.qml)
 set_target_properties(pikmin-launcher PROPERTIES WIN32_EXECUTABLE ON)

@@ -150,7 +150,7 @@ python3 -m recomp --dol orig/GPIP01/sys/main.dol --map orig/GPIP01/files/dataDir
 
 ## Installation and Steam
 
-- **Install rules** are in `runtime/gen.cmake`: the `pikmin` binary, `packaging/pikminrecomp.desktop.in` (configured with an absolute `Exec` path), and the original icon (`packaging/pikminrecomp.svg`, plus a 256 px PNG).
+- **Install rules** are in `runtime/gen.cmake`: the `pikmin` binary, `packaging/pikminrecomp.desktop.in` (configured with an absolute `Exec` path), and the icon (`packaging/pikminrecomp.svg`, plus a 256 px PNG): a red Pikmin rendered from a picoCAD model with `tools/render_picocad.py --bg --yaw 90 --pitch 5`; the launcher uses the same image (`launcher/assets/`).
 - **Installed per user** to `~/.local`. This is the one user-approved exception to "nothing in `$HOME`".
   ```sh
   # Release build in its own directory, reusing the aurora/Dawn sources fetched by build/cmake
