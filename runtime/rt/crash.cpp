@@ -12,6 +12,7 @@
 
 #include "rt/diag.hpp"
 #include "rt/guest.hpp"
+#include "rt/input_record.hpp"
 #include "rt/irq.hpp"
 #include "rt/sched.hpp"
 #include "rt/trace.hpp"
@@ -141,6 +142,11 @@ bool crash_report(const CrashInfo& info) {
     if (log_fd() >= 0) backtrace_symbols_fd(frames, n, log_fd());
     put("recent events (last 256, oldest first; retrace channel name a b text):\n");
     trace_dump(256);
+    if (!input_record_path().empty()) {
+        put("input recording: ");
+        put(input_record_path().c_str());
+        put("\n");
+    }
     put("log file ");
     put(log_path().empty() ? "(none)" : log_path().c_str());
     put("\n=== end ===\n");

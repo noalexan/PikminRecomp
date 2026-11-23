@@ -1,5 +1,6 @@
 #include "rt/input_script.hpp"
 
+#include <algorithm>
 #include <map>
 #include <sstream>
 
@@ -67,6 +68,21 @@ PadScriptParse parse_input_script(const std::string& text) {
         out.entries.push_back(e);
     }
     return out;
+}
+
+std::string format_buttons(uint16_t buttons, bool swarm) {
+    std::string out;
+    // In mask order, so recordings are stable.
+    std::vector<std::pair<uint16_t, std::string>> by_bit;
+    for (const auto& [name, bit] : button_names()) by_bit.emplace_back(bit, name);
+    std::sort(by_bit.begin(), by_bit.end());
+    for (const auto& [bit, name] : by_bit) {
+        if (!(buttons & bit)) continue;
+        if (!out.empty()) out += '+';
+        out += name;
+    }
+    if (swarm) out += out.empty() ? "SWARM" : "+SWARM";
+    return out.empty() ? "-" : out;
 }
 
 void set_input_script(std::vector<PadScriptEntry> entries) { g_script = std::move(entries); }

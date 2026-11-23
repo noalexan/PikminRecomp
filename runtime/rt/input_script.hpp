@@ -22,6 +22,8 @@ struct PadScriptParse {
 
 // Lines: "FRAME BUTTONS [STICKX STICKY [CX CY]]"; BUTTONS (SWARM = swarm modifier) = '+'-joined names or '-'; '#' starts a comment.
 PadScriptParse parse_input_script(const std::string& text);
+// The BUTTONS field for a state, as the parser reads it ("A+START", "SWARM", "-").
+std::string format_buttons(uint16_t buttons, bool swarm);
 void set_input_script(std::vector<PadScriptEntry> entries);
 // The scripted port-0 state at `frame`, or nothing if no script is active yet.
 std::optional<PadScriptEntry> scripted_pad(uint32_t frame);

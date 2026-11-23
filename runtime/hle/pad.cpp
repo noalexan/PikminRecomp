@@ -3,6 +3,7 @@
 #include "enhance/enhance.hpp"
 #include "rt/gfx.hpp"
 #include "rt/guest.hpp"
+#include "rt/input_record.hpp"
 #include "rt/input_script.hpp"
 
 #ifdef PIKMIN_GRAPHICS
@@ -106,6 +107,9 @@ void hle_PADRead(ppc_ctx* c) {
         write_no_controller(c, status);
     }
     swarm = apply_script(c, status) || swarm;
+    rt::input_record(rt::vi_retrace_count(), rt::rd16(c, status), static_cast<int8_t>(rt::rd8(c, status + 2)),
+                     static_cast<int8_t>(rt::rd8(c, status + 3)), static_cast<int8_t>(rt::rd8(c, status + 4)),
+                     static_cast<int8_t>(rt::rd8(c, status + 5)), swarm);
     enh::route_right_stick(c, status, swarm);  // modern camera: right stick = camera unless swarming
     ret(c, result);
 }

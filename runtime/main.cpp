@@ -26,6 +26,7 @@
 #include "rt/trace.hpp"
 #include "rt/disc.hpp"
 #include "rt/gfx.hpp"
+#include "rt/input_record.hpp"
 #include "rt/input_script.hpp"
 #include "rt/irq.hpp"
 #include "rt/log.hpp"
@@ -47,7 +48,7 @@ namespace {
 void usage() {
     std::puts(
         "usage: pikmin [--disc PATH] [--headless | --offscreen] [--fast] [--frames N] [--watchdog SECONDS]\n"
-        "              [--screenshot FRAME:PATH] [--input-script PATH] [--config PATH]\n"
+        "              [--screenshot FRAME:PATH] [--input-script PATH] [--record-input PATH] [--config PATH]\n"
         "              [--aspect auto|4:3] [--target-fps auto|original|N] [--hud-scale X] [--camera modern|original]");
 }
 
@@ -144,6 +145,7 @@ int main(int argc, char** argv) {
     std::string shot_path;
     uint32_t frames = 0;
     int watchdog = 5;
+    std::string record_path;
     std::string aspect_arg, fps_arg, hud_arg, camera_arg;
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
@@ -174,6 +176,7 @@ int main(int argc, char** argv) {
         else if (a == "--fast") fast = true;
         else if (a == "--frames") frames = static_cast<uint32_t>(std::stoul(next()));
         else if (a == "--watchdog") watchdog = std::stoi(next());
+        else if (a == "--record-input") record_path = next();
         else if (a == "--crash-test") {  // tests only: crash on purpose (see rt/crash.hpp)
             if (!rt::crash_test_arm(next().c_str())) fail("--crash-test expects segv|bad_access|abort|double_fault|hang");
         }
@@ -219,6 +222,12 @@ int main(int argc, char** argv) {
     if (headless && fps_arg.empty()) es.target_fps = -1;
 
     open_run_log(argc, argv, cfg, es, disc_path, headless ? "headless" : offscreen ? "offscreen" : "window", fast);
+    if (!record_path.empty()) {
+        const std::string header = std::string("pikmin ") + rt::kBuildHash + " clock=" + (fast ? "fast" : "real-time") +
+                                   " config=" + config_path;
+        if (!rt::input_record_open(record_path, header)) fail("cannot write input recording " + record_path);
+        rt::log_file_only("run", "input recording: %s", record_path.c_str());
+    }
 
     std::unique_ptr<rt::Disc> disc;
     try {
