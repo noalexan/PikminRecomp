@@ -7,6 +7,7 @@
 #include "core/release.hpp"
 #include "core/rom.hpp"
 #include "core/toolchain.hpp"
+#include "core/update.hpp"
 #include "core/version.hpp"
 
 static int failures = 0;
@@ -58,6 +59,46 @@ int main() {
     CHECK(version_token("cmake version 3.31.6\n\nCMake suite") == "3.31.6");
     CHECK(version_token("Python 3.14.0") == "3.14.0");
     CHECK(!install_hint(Os::Fedora).isEmpty() && install_hint(Os::Windows).contains("pacman"));
+
+    // self-update: staged files swapped in by renaming, old ones kept as *.old, then removed
+    {
+        QTemporaryDir t;
+        const QString app = t.filePath("app"), staged = t.filePath("staged");
+        auto read = [](const QString& p) {
+            QFile f(p);
+            return f.open(QIODevice::ReadOnly) ? f.readAll() : QByteArray("<missing>");
+        };
+        QDir().mkpath(app + "/plugins/platforms");
+        QDir().mkpath(staged + "/plugins/platforms");
+        QDir().mkpath(staged + "/qml/New");
+        write(app + "/Launcher.exe", "old exe");
+        write(app + "/Qt6Core.dll", "old core");
+        write(app + "/plugins/platforms/qwindows.dll", "old plugin");
+        write(app + "/user-file.txt", "keep");
+        write(staged + "/Launcher.exe", "new exe");
+        write(staged + "/Qt6Core.dll", "new core");
+        write(staged + "/plugins/platforms/qwindows.dll", "new plugin");
+        write(staged + "/qml/New/qmldir", "new module");
+        QString err;
+        CHECK(swap_in_tree(staged, app, &err) && err.isEmpty());
+        CHECK(read(app + "/Launcher.exe") == "new exe" && read(app + "/Launcher.exe.old") == "old exe");
+        CHECK(read(app + "/Qt6Core.dll") == "new core" && read(app + "/Qt6Core.dll.old") == "old core");
+        CHECK(read(app + "/plugins/platforms/qwindows.dll") == "new plugin");
+        CHECK(read(app + "/qml/New/qmldir") == "new module");
+        CHECK(read(app + "/user-file.txt") == "keep");
+        remove_old_files(app);
+        CHECK(!QFile::exists(app + "/Launcher.exe.old") && !QFile::exists(app + "/plugins/platforms/qwindows.dll.old"));
+        CHECK(read(app + "/Launcher.exe") == "new exe" && read(app + "/user-file.txt") == "keep");
+
+        // A failure part-way puts every file back.
+        write(staged + "/Launcher.exe", "newer exe");
+        write(staged + "/Qt6Core.dll", "newer core");
+        QDir().mkpath(staged + "/user-file.txt");             // its target folder is a file:
+        write(staged + "/user-file.txt/inner", "can't go");  // that move fails
+        CHECK(!swap_in_tree(staged, app, &err) && !err.isEmpty());
+        CHECK(read(app + "/Launcher.exe") == "new exe" && read(app + "/Qt6Core.dll") == "new core");
+        CHECK(!QFile::exists(app + "/Launcher.exe.old") && read(app + "/user-file.txt") == "keep");
+    }
 
     // ROM: bad inputs
     QTemporaryDir tmp;

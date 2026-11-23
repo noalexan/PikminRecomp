@@ -20,6 +20,7 @@
 #include "core/release.hpp"
 #include "core/rom.hpp"
 #include "core/toolchain.hpp"
+#include "core/update.hpp"
 #include "core/version.hpp"
 
 namespace launcher {
@@ -39,8 +40,8 @@ bool remove_tree(const QString& path) { return !QFileInfo::exists(path) || QDir(
 
 Launcher::Launcher(QObject* parent) : QObject(parent) {
     QDir().mkpath(data_dir());
-    // A previous self-update on Windows leaves the old executable behind.
-    QFile::remove(QCoreApplication::applicationFilePath() + ".old");
+    // A previous self-update on Windows leaves the replaced files behind as *.old.
+    if (kWindows) remove_old_files(QCoreApplication::applicationDirPath());
     load_state();
     ui_timer_.setSingleShot(true);
     ui_timer_.setInterval(100);
@@ -522,31 +523,43 @@ void Launcher::update() {
 void Launcher::install_update(const QString& tmp) {
     QString target;
     if (kWindows) {
-        // Unpack next to the running launcher, moving the running .exe aside.
+        // The running launcher's .exe, DLLs and plugins can't be overwritten (only renamed): unpack
+        // into a staging folder, then swap each file in, the replaced ones renamed to *.old.
         const QString dir = QCoreApplication::applicationDirPath(), exe = QCoreApplication::applicationFilePath();
-        QFile::remove(exe + ".old");
-        QFile::rename(exe, exe + ".old");
-        // Windows' own bsdtar (reads zip), not MSYS2's GNU tar; asynchronous.
+        const QString staging = data("launcher-update");
+        remove_tree(staging);
+        QDir().mkpath(staging);
+        // Windows' own bsdtar (reads zip), not MSYS2's GNU tar; asynchronous, output to the log.
         auto* tar = new QProcess(this);
-        connect(tar, &QProcess::finished, this, [this, tar, tmp, exe](int code, QProcess::ExitStatus st) {
+        tar->setProcessChannelMode(QProcess::MergedChannels);
+        connect(tar, &QProcess::finished, this, [this, tar, tmp, exe, dir, staging](int code, QProcess::ExitStatus st) {
+            append_log(QString::fromLocal8Bit(tar->readAll()));
             tar->deleteLater();
             if (st != QProcess::NormalExit || code != 0) {
-                QFile::rename(exe + ".old", exe);
-                fail("Couldn't unpack the update");
+                fail("Couldn't unpack the update (tar exit " + QString::number(code) + ")");
                 return;
             }
-            QFile::remove(tmp);
-            QProcess::startDetached(exe, {});
-            QCoreApplication::quit();
+            auto err = std::make_shared<QString>();
+            in_background([staging, dir, err] { swap_in_tree(staging, dir, err.get()); },
+                          [this, tmp, exe, staging, err] {
+                              remove_tree(staging);
+                              if (!err->isEmpty()) {
+                                  fail("Couldn't install the update: " + *err);
+                                  return;
+                              }
+                              QFile::remove(tmp);
+                              QProcess::startDetached(exe, {});
+                              QCoreApplication::quit();
+                          });
         });
-        connect(tar, &QProcess::errorOccurred, this, [this, tar, exe](QProcess::ProcessError e) {
+        connect(tar, &QProcess::errorOccurred, this, [this, tar](QProcess::ProcessError e) {
             if (e != QProcess::FailedToStart) return;
             tar->deleteLater();
-            QFile::rename(exe + ".old", exe);
             fail("Couldn't start tar.exe to unpack the update");
         });
-        tar->start(qEnvironmentVariable("SystemRoot", "C:/Windows") + "/System32/tar.exe",
-                   {"-xf", tmp, "-C", dir, "--strip-components=1"});
+        const QString tar_exe = qEnvironmentVariable("SystemRoot", "C:/Windows") + "/System32/tar.exe";
+        append_log("$ " + tar_exe + " -xf " + tmp + " -C " + staging + " --strip-components=1\n");
+        tar->start(tar_exe, {"-xf", tmp, "-C", staging, "--strip-components=1"});
         return;
     } else {
         target = qEnvironmentVariable("APPIMAGE");  // the AppImage file, not its read-only mount

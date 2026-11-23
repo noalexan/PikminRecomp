@@ -11,7 +11,7 @@ qt_standard_project_setup(REQUIRES 6.5)
 
 add_library(launcher_core STATIC
     src/core/rom.cpp src/core/version.cpp src/core/release.cpp src/core/progress.cpp
-    src/core/toolchain.cpp src/core/paths.cpp)
+    src/core/toolchain.cpp src/core/paths.cpp src/core/update.cpp)
 target_include_directories(launcher_core PUBLIC src)
 target_link_libraries(launcher_core PUBLIC Qt6::Core)
 target_compile_definitions(launcher_core PUBLIC PIKMIN_LAUNCHER_VERSION="${PIKMIN_LAUNCHER_VERSION}")
