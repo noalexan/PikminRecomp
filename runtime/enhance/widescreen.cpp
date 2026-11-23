@@ -3,10 +3,12 @@
 // aurora stretches the 640x480 logical frame over the whole window (AURORA_VIEWPORT_STRETCH), so:
 // - 3D: camera frustums built with the 4:3 aspect (CullFrustum::update) get the window aspect
 //   instead; projection and frustum culling both read it, so the view widens at constant vertical FOV.
-// - 2D: every 2D projection (orthographic, or anything drawn by the P2D screen system) is squeezed
-//   back to 4:3 proportions around the screen centre (pillarboxed). The squeeze is an affine map in
-//   NDC, folded into the projection matrix (row0' = sx*row0 + ox*row3), and partial scissor
-//   rectangles get the same map.
+// - 2D: every 2D projection (orthographic, or anything drawn by the P2D screen system or the 2D
+//   effect manager) is squeezed back to 4:3 proportions around the screen centre (pillarboxed).
+//   The squeeze is an affine map in NDC, folded into the projection matrix
+//   (row0' = sx*row0 + ox*row3), and partial scissor rectangles get the same map. The title and
+//   memory-card/file-select screens are also scissored to the 4:3 area.
+// - Cinematic cameras (CamDataInfo) get the window aspect as well (title screen, cutscenes).
 // - HUD (zen::DrawGameInfo screens): each top-level element is scaled by hud_scale around the
 //   screen corner/edge it sits nearest to; that point maps to the real screen edge, so elements stay
 //   edge-anchored on any aspect.
@@ -29,11 +31,19 @@
 
 extern "C" {
 __attribute__((weak)) void f_8004281c_orig(ppc_ctx* c);  // CullFrustum::update(aspect, fov, near, far)
+__attribute__((weak)) void f_8002a55c_orig(ppc_ctx* c);  // CamDataInfo::update(frame, Matrix4f&)
 __attribute__((weak)) void f_801b161c_orig(ppc_ctx* c);  // P2DScreen::draw(x, y, const P2DGrafContext*)
 __attribute__((weak)) void f_801af5ec_orig(ppc_ctx* c);  // P2DPane::draw(x, y, const P2DGrafContext*, bool)
 __attribute__((weak)) void f_801b7124_orig(ppc_ctx* c);  // zen::DrawGameInfo::draw(Graphics&)
 __attribute__((weak)) void f_80066ac4_orig(ppc_ctx* c);  // MapMgr::postrefresh(Graphics&)
 __attribute__((weak)) void f_80044210_orig(ppc_ctx* c);  // Texture::grabBuffer(w, h, bool, bool)
+__attribute__((weak)) void f_801e8300_orig(ppc_ctx* c);  // zen::EffectMgr2D::draw(Graphics&)
+__attribute__((weak)) void f_801806c8_orig(ppc_ctx* c);  // zen::ogScrTitleMgr::draw(Graphics&)
+__attribute__((weak)) void f_801973e8_orig(ppc_ctx* c);  // zen::ogScrStartMgr::draw(Graphics&)
+__attribute__((weak)) void f_8018a150_orig(ppc_ctx* c);  // zen::ogScrFileSelectMgr::draw(Graphics&)
+__attribute__((weak)) void f_80192028_orig(ppc_ctx* c);  // zen::ogScrFileChkSelMgr::draw(Graphics&)
+__attribute__((weak)) void f_8018d6e8_orig(ppc_ctx* c);  // zen::ogScrMemChkMgr::draw(Graphics&)
+__attribute__((weak)) void f_80192884_orig(ppc_ctx* c);  // zen::ogScrMakeDefaultMgr::draw(Graphics&)
 __attribute__((weak)) void f_80042c10_orig(ppc_ctx* c);  // Camera::projectWorldPoint(Graphics&, Vector3f&)
 __attribute__((weak)) void f_8004bd38_orig(ppc_ctx* c);  // DGXGraphics::fillRectangle(RectArea&)
 __attribute__((weak)) void f_8004b6f0_orig(ppc_ctx* c);  // DGXGraphics::drawRectangle(RectArea&, RectArea&, Vector3f*)
@@ -62,6 +72,7 @@ float g_proj[16];
 uint32_t g_proj_type = 0;
 bool g_have_proj = false;
 int g_p2d_depth = 0;   // inside P2DScreen::draw
+int g_clip_depth = 0;  // inside a menu screen that is clipped to 4:3 (see clip_to_4_3)
 int g_hud_depth = 0;   // inside zen::DrawGameInfo::draw
 bool g_viewport_full = true;
 std::vector<Map2D> g_anchors;  // HUD element maps (innermost last)
@@ -92,14 +103,47 @@ void apply(float p[16], const Map2D& m) {
 
 bool identity(const Map2D& m) { return m.sx == 1.f && m.sy == 1.f; }
 
-// Re-sends the last guest projection, adjusted for the current 2D state.
+uint32_t g_scissor[4] = {0, 0, 640, 480};  // last guest scissor, unmapped
+
+// The title and memory-card/file-select screens are clipped to the 4:3 pillarbox: they park panes just off the
+// 640x480 screen (slide-in cards, an oversized frame, bubbles), and squeezing would reveal them.
+// Not every screen: in-game message boxes dim the whole screen with an oversized pane that should
+// keep covering the wide screen.
+bool clip_to_4_3() {
+    return g_clip_depth > 0 && g_p2d_depth > 0 && g_hud_depth == 0 && g_anchors.empty() && !g_fullscreen_fx;
+}
+
+// The guest scissor in host terms for the current 2D state; false if it is passed through unchanged.
+bool map_scissor(uint32_t& x, uint32_t& y, uint32_t& w, uint32_t& h) {
+    if (!is_2d(g_proj_type)) return false;
+    const bool full = x <= 2 && y <= 2 && x + w >= kW - 2 && y + h >= kH - 2;
+    if (full && !clip_to_4_3()) return false;  // full screen (3D follows)
+    const Map2D m = current_map();
+    if (identity(m)) return false;
+    const float x0 = m.ax + m.sx * (static_cast<float>(x) - m.ax);
+    const float x1 = m.ax + m.sx * (static_cast<float>(x + w) - m.ax);
+    const float y0 = m.ay + m.sy * (static_cast<float>(y) - m.ay);
+    const float y1 = m.ay + m.sy * (static_cast<float>(y + h) - m.ay);
+    x = static_cast<uint32_t>(std::max(0.f, std::floor(x0)));
+    y = static_cast<uint32_t>(std::max(0.f, std::floor(y0)));
+    w = static_cast<uint32_t>(std::max(0.f, std::ceil(x1) - static_cast<float>(x)));
+    h = static_cast<uint32_t>(std::max(0.f, std::ceil(y1) - static_cast<float>(y)));
+    return true;
+}
+
+// Re-sends the last guest projection and scissor, adjusted for the current 2D state.
 void reissue() {
 #ifdef PIKMIN_GRAPHICS
-    if (!g_have_proj || !rt::gfx_active()) return;
-    float m[16];
-    std::memcpy(m, g_proj, sizeof m);
-    if (is_2d(g_proj_type)) apply(m, current_map());
-    GXSetProjection(m, GXProjectionType(g_proj_type));
+    if (!rt::gfx_active()) return;
+    if (g_have_proj) {
+        float m[16];
+        std::memcpy(m, g_proj, sizeof m);
+        if (is_2d(g_proj_type)) apply(m, current_map());
+        GXSetProjection(m, GXProjectionType(g_proj_type));
+    }
+    uint32_t x = g_scissor[0], y = g_scissor[1], w = g_scissor[2], h = g_scissor[3];
+    map_scissor(x, y, w, h);
+    GXSetScissor(x, y, w, h);
 #endif
 }
 }  // namespace
@@ -118,19 +162,8 @@ void on_set_viewport(float x, float y, float w, float h) {
 }
 
 bool on_set_scissor(uint32_t& x, uint32_t& y, uint32_t& w, uint32_t& h) {
-    if (!is_2d(g_proj_type)) return false;
-    if (x <= 2 && y <= 2 && x + w >= kW - 2 && y + h >= kH - 2) return false;  // full screen (3D follows)
-    const Map2D m = current_map();
-    if (identity(m)) return false;
-    const float x0 = m.ax + m.sx * (static_cast<float>(x) - m.ax);
-    const float x1 = m.ax + m.sx * (static_cast<float>(x + w) - m.ax);
-    const float y0 = m.ay + m.sy * (static_cast<float>(y) - m.ay);
-    const float y1 = m.ay + m.sy * (static_cast<float>(y + h) - m.ay);
-    x = static_cast<uint32_t>(std::max(0.f, std::floor(x0)));
-    y = static_cast<uint32_t>(std::max(0.f, std::floor(y0)));
-    w = static_cast<uint32_t>(std::max(0.f, std::ceil(x1) - static_cast<float>(x)));
-    h = static_cast<uint32_t>(std::max(0.f, std::ceil(y1) - static_cast<float>(y)));
-    return true;
+    g_scissor[0] = x, g_scissor[1] = y, g_scissor[2] = w, g_scissor[3] = h;
+    return map_scissor(x, y, w, h);
 }
 
 namespace {
@@ -227,6 +260,23 @@ void hle_update__11CullFrustumFffff(ppc_ctx* c) {
     if (f_8004281c_orig) f_8004281c_orig(c);
 }
 
+// Cinematic cameras (CamDataInfo, camera at +0xa8) never go through CullFrustum::update: their
+// aspect (CullFrustum +0x1c4) keeps the 4:3 the constructor set, and DGXGraphics::setPerspective
+// reads it when the scene is drawn (title screen, cutscenes). Give them the window aspect too.
+void hle_update__11CamDataInfoFfR8Matrix4f(ppc_ctx* c) {
+    HLE_ENTRY(c, "CamDataInfo::update");
+    const uint32_t ea = rt::arg(c, 0) + 0xa8 + 0x1c4;
+    uint32_t u = rt::rd32(c, ea);
+    float a;
+    std::memcpy(&a, &u, 4);
+    const float wide = enh::view_aspect();
+    if (std::fabs(a - 4.f / 3.f) < 0.02f && wide > 4.f / 3.f + 0.001f) {
+        std::memcpy(&u, &wide, 4);
+        rt::wr32(c, ea, u);
+    }
+    if (f_8002a55c_orig) f_8002a55c_orig(c);
+}
+
 // MapMgr::postrefresh copies the EFB (Texture::grabBuffer) and draws it back over the whole screen
 // with an orthographic projection (motion blur, screen fades). Those quads must cover the wide
 // screen, so from the first grab to the end of postrefresh 2D is not pillarboxed.
@@ -310,6 +360,53 @@ void hle_draw__9P2DScreenFiiPC14P2DGrafContext(ppc_ctx* c) {
     if (++enh::g_p2d_depth == 1) enh::reissue();  // the port was set before the screen draws
     if (f_801b161c_orig) f_801b161c_orig(c);
     if (--enh::g_p2d_depth == 0) enh::reissue();
+}
+
+// 2D particle effects (menu sparkles) are drawn in the P2D port between screens: squeeze them like
+// the panes they decorate.
+void hle_draw__Q23zen11EffectMgr2DFR8Graphics(ppc_ctx* c) {
+    HLE_ENTRY(c, "zen::EffectMgr2D::draw");
+    if (++enh::g_p2d_depth == 1) enh::reissue();
+    if (f_801e8300_orig) f_801e8300_orig(c);
+    if (--enh::g_p2d_depth == 0) enh::reissue();
+}
+
+namespace {
+void clipped_menu(ppc_ctx* c, void (*orig)(ppc_ctx*)) {
+    if (++enh::g_clip_depth == 1) enh::reissue();
+    if (orig) orig(c);
+    if (--enh::g_clip_depth == 0) enh::reissue();
+}
+}  // namespace
+
+void hle_draw__Q23zen13ogScrTitleMgrFR8Graphics(ppc_ctx* c) {
+    HLE_ENTRY(c, "zen::ogScrTitleMgr::draw");
+    clipped_menu(c, f_801806c8_orig);
+}
+
+void hle_draw__Q23zen13ogScrStartMgrFR8Graphics(ppc_ctx* c) {
+    HLE_ENTRY(c, "zen::ogScrStartMgr::draw");
+    clipped_menu(c, f_801973e8_orig);
+}
+
+void hle_draw__Q23zen18ogScrFileSelectMgrFR8Graphics(ppc_ctx* c) {
+    HLE_ENTRY(c, "zen::ogScrFileSelectMgr::draw");
+    clipped_menu(c, f_8018a150_orig);
+}
+
+void hle_draw__Q23zen18ogScrFileChkSelMgrFR8Graphics(ppc_ctx* c) {
+    HLE_ENTRY(c, "zen::ogScrFileChkSelMgr::draw");
+    clipped_menu(c, f_80192028_orig);
+}
+
+void hle_draw__Q23zen14ogScrMemChkMgrFR8Graphics(ppc_ctx* c) {
+    HLE_ENTRY(c, "zen::ogScrMemChkMgr::draw");
+    clipped_menu(c, f_8018d6e8_orig);
+}
+
+void hle_draw__Q23zen19ogScrMakeDefaultMgrFR8Graphics(ppc_ctx* c) {
+    HLE_ENTRY(c, "zen::ogScrMakeDefaultMgr::draw");
+    clipped_menu(c, f_80192884_orig);
 }
 
 // HUD elements get the map planned for them in plan_hud; their subtree draws inside it.

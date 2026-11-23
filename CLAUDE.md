@@ -103,7 +103,7 @@ python3 -m recomp --dol orig/GPIP01/sys/main.dol --map orig/GPIP01/files/dataDir
 
 ### Enhancements: `runtime/enhance/`
 - Game functions are patched through `"hook"` entries in `overrides.toml`, never by editing generated code.
-- **Widescreen (Hor+):** 4:3 cameras get the window aspect, with the same vertical FOV, for both projection and frustum culling. 2D/ortho drawing is pillarboxed to 4:3, except full-screen fades, screen-copy effects and creature life gauges.
+- **Widescreen (Hor+):** 4:3 cameras get the window aspect, with the same vertical FOV, for both projection and frustum culling. 2D/ortho drawing is pillarboxed to 4:3, except full-screen fades, screen-copy effects and creature life gauges. Cinematic cameras (`CamDataInfo`: title screen, cutscenes) are widened too. The title and memory-card/file-select screens are also scissored to the 4:3 area, because they park panes just off the 640×480 screen.
 - **HUD:** gameplay HUD clusters shrink toward the edge or corner they touch (`hud_scale`, default 0.5).
 - **Frame rate:** the game loop runs at the display refresh (240 fps with vsync). The frame time is scaled by 0.833 to match PAL gameplay speed (25 fps capped at 1/30 s). Cutscenes and camera smoothing are converted to original-frame units. The 50 Hz retrace still drives input scripts and screenshots.
 - **Camera:** right stick orbits and tilts (elevation 8–82°); L1 + right stick swarms; keyboard arrows = camera, Left Shift + arrows = swarm.
