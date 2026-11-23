@@ -6,6 +6,8 @@
 #include "rt/blo.hpp"
 
 #include <algorithm>
+#include <cctype>
+#include <cstdio>
 #include <cstring>
 
 namespace rt::blo {
@@ -154,16 +156,23 @@ void put16(std::vector<uint8_t>& b, size_t at, int v) {
 
 // The record's bytes renamed, moved down by dy and with new text; the result is 4-aligned in length
 // (records start 4-aligned, so the bytes after an inserted clone keep their alignment).
-std::vector<uint8_t> clone(const std::vector<uint8_t>& b, const Record& r, const std::string& name, int dy,
+std::vector<uint8_t> clone(const std::vector<uint8_t>& b, const Record& r, const std::string& name, int y,
                            const std::string& text) {
     std::vector<uint8_t> out(b.begin() + static_cast<long>(r.begin), b.begin() + static_cast<long>(r.text_at));
     std::memcpy(out.data() + 4, name.data(), 4);
-    put16(out, 10, r.y + dy);
+    put16(out, 10, y);
     out.push_back(static_cast<uint8_t>(text.size() >> 8));
     out.push_back(static_cast<uint8_t>(text.size()));
     out.insert(out.end(), text.begin(), text.end());
     while (out.size() % 4) out.push_back(0);
     return out;
+}
+
+// A piece of a menu's glass frame: top-level picture p000, p001, ...
+bool is_frame(const Record& r) {
+    return r.tag == 0x12 && r.depth == 1 && r.name.size() == 4 && r.name[0] == 'p' &&
+           std::isdigit(static_cast<unsigned char>(r.name[1])) && std::isdigit(static_cast<unsigned char>(r.name[2])) &&
+           std::isdigit(static_cast<unsigned char>(r.name[3]));
 }
 
 std::string item_name(const char* prefix, int index) {
@@ -194,50 +203,138 @@ int item_count(const std::vector<uint8_t>& blo) {
     return recs ? count(*recs) : 0;
 }
 
+std::vector<Item> panes(const std::vector<uint8_t>& blo) {
+    std::vector<Item> out;
+    auto recs = parse(blo);
+    if (!recs) return out;
+    for (const auto& r : *recs)
+        if (r.tag == 0x10) out.push_back({r.name, {}, r.depth, r.x, r.y, r.w, r.h});
+    return out;
+}
+
+std::vector<Item> pictures(const std::vector<uint8_t>& blo) {
+    std::vector<Item> out;
+    auto recs = parse(blo);
+    if (!recs) return out;
+    for (const auto& r : *recs)
+        if (r.tag == 0x12) out.push_back({r.name, {}, r.depth, r.x, r.y, r.w, r.h});
+    return out;
+}
+
 std::optional<std::vector<uint8_t>> add_menu_items(const std::vector<uint8_t>& blo,
                                                    const std::vector<std::string>& labels) {
-    auto recs = parse(blo);
-    if (!recs) return std::nullopt;
-    const int n = count(*recs);
-    const Record* hm0 = find(*recs, "hm", 0);
-    if (!hm0 || n + static_cast<int>(labels.size()) > 99) return std::nullopt;
-    // Last item of hm00's group (pause.blo keeps a third item elsewhere).
+    auto parsed = parse(blo);
+    if (!parsed) return std::nullopt;
+    const std::vector<Record>& recs = *parsed;
+    const int n = count(recs);
+    const int added = static_cast<int>(labels.size());
+    const Record* hm0 = find(recs, "hm", 0);
+    if (!hm0 || n + added > 99) return std::nullopt;
+    // The hm00 group: hmNN siblings of hm00 (pause.blo keeps a third item elsewhere).
     int last = 0;
     for (int i = 1; i < n; ++i) {
-        const Record* r = find(*recs, "hm", i);
+        const Record* r = find(recs, "hm", i);
         if (r && r->depth == hm0->depth && r->begin > hm0->begin) last = i;
     }
-    const Record* hm_last = find(*recs, "hm", last);
-    const Record* hm_prev = find(*recs, "hm", last - 1);
-    const Record* he_last = find(*recs, "he", last);
-    if (last < 1 || !hm_last || !hm_prev || !he_last || hm_last->begin % 4 || he_last->begin % 4) return std::nullopt;
-    const int spacing = hm_last->y - hm_prev->y;
-    // The first new item goes below the lowest existing one (heNN are absolute), with the menu's
-    // own gap; hmNN (relative to their group) move by the same amount.
-    int bottom = he_last->y + he_last->h;
-    for (int i = 0; i < n; ++i)
-        if (const Record* e = find(*recs, "he", i)) bottom = std::max(bottom, e->y + e->h);
-    const int first_dy = bottom + (spacing - he_last->h) - he_last->y;
+    const Record* hm1 = find(recs, "hm", 1);
+    if (last < 1 || !hm1) return std::nullopt;
+    for (const auto& r : recs)
+        if (r.begin % 4) return std::nullopt;
 
-    std::vector<uint8_t> hm_bytes, he_bytes;
-    for (size_t j = 0; j < labels.size(); ++j) {
-        const int index = n + static_cast<int>(j);
-        const int dy = first_dy + spacing * static_cast<int>(j);
-        auto a = clone(blo, *hm_last, item_name("hm", index), dy, labels[j]);
-        auto e = clone(blo, *he_last, item_name("he", index), dy, labels[j]);
-        hm_bytes.insert(hm_bytes.end(), a.begin(), a.end());
-        he_bytes.insert(he_bytes.end(), e.begin(), e.end());
-    }
+    // Spacing: menus of 4+ items use at most 36 (m_selec2.blo tightens to 39 for 3 items; 36 keeps a
+    // 4-5 item title menu clear of the copyright line).
+    const int s0 = hm1->y - hm0->y;
+    const int spacing = (last + 1 + added >= 4) ? std::min(s0, 36) : s0;
+
     std::vector<uint8_t> out = blo;
-    // Insert the later position first so the earlier offset stays valid.
-    if (hm_last->end > he_last->end) {
-        out.insert(out.begin() + static_cast<long>(hm_last->end), hm_bytes.begin(), hm_bytes.end());
-        out.insert(out.begin() + static_cast<long>(he_last->end), he_bytes.begin(), he_bytes.end());
-    } else {
-        out.insert(out.begin() + static_cast<long>(he_last->end), he_bytes.begin(), he_bytes.end());
-        out.insert(out.begin() + static_cast<long>(hm_last->end), hm_bytes.begin(), hm_bytes.end());
+    auto set_y = [&](const Record& r, int y) { put16(out, r.begin + 10, y); };
+    auto by_name = [&](const std::string& name) -> const Record* {
+        for (const auto& r : recs)
+            if (r.name == name) return &r;
+        return nullptr;
+    };
+    auto digits = [](int i) { return item_name("xx", i).substr(2); };
+    auto icon = [&](int i, char side) { return by_name("i" + digits(i) + side); };
+
+    // 1. Re-space the group (heNN absolute, hmNN and iNN[lr] relative: all move by the same amount).
+    std::vector<int> dy(static_cast<size_t>(n), 0);
+    for (int i = 0; i <= last; ++i) dy[static_cast<size_t>(i)] = hm0->y + i * spacing - find(recs, "hm", i)->y;
+    int old_bottom = 0, bottom = 0;
+    for (int i = 0; i < n; ++i) {
+        const Record* e = find(recs, "he", i);
+        if (!e) continue;
+        old_bottom = std::max(old_bottom, e->y + e->h);
+        bottom = std::max(bottom, e->y + dy[static_cast<size_t>(i)] + e->h);
     }
-    if (item_count(out) != n + static_cast<int>(labels.size())) return std::nullopt;
+
+    // 2. New items below the lowest one, cloned from the group's last item.
+    const Record* hm_last = find(recs, "hm", last);
+    const Record* he_last = find(recs, "he", last);
+    const Record* il = icon(last, 'l');
+    const Record* ir = icon(last, 'r');
+    if (!hm_last || !he_last) return std::nullopt;
+    const int first_y = bottom + (spacing - he_last->h);  // absolute (he) position of the first new item
+    const int new_bottom = first_y + (added - 1) * spacing + he_last->h;
+    const int extra = std::max(0, new_bottom - old_bottom);
+    // The frame grows by `extra`; it and the items move up by at most 55 (the room under the title logo).
+    const int up = std::min(extra, 55);
+
+    for (int i = 0; i <= last; ++i) {
+        const int d = dy[static_cast<size_t>(i)];
+        if (!d) continue;
+        set_y(*find(recs, "hm", i), find(recs, "hm", i)->y + d);
+        if (const Record* e = find(recs, "he", i)) set_y(*e, e->y + d);
+        for (char side : {'l', 'r'})
+            if (const Record* c = icon(i, side)) set_y(*c, c->y + d);
+    }
+    // 3. The glass capsule: the unnamed pictures in the item group, before hm00 (m_selec2.blo grows
+    //    them for its third item). They move with the group and grow downwards by `extra`.
+    const Record* yoko = by_name("yoko");
+    for (const auto& r : recs) {
+        if (yoko && r.tag == 0x12 && r.depth == hm0->depth && r.begin > yoko->begin && r.begin < hm0->begin &&
+            r.name == std::string(4, '\0')) {
+            put16(out, r.begin + 14, r.h + extra);
+        }
+    }
+    // 4. Shift everything that is positioned absolutely, and the groups holding the relative ones.
+    for (const auto& r : recs) {
+        const bool he = item_index(r, "he") >= 0;
+        const bool lone_hm = item_index(r, "hm") >= 0 && r.depth != hm0->depth;
+        const bool group = r.name == "yoko" || r.name == "iall";
+        const bool frame = is_frame(r);  // the light blobs behind the menu
+        if (!he && !lone_hm && !group && !frame) continue;
+        const int cur = static_cast<int16_t>(out[r.begin + 10] << 8 | out[r.begin + 11]);
+        set_y(r, cur - up);
+    }
+
+    // 5. Clones, inserted from the back so earlier offsets stay valid.
+    std::vector<std::pair<size_t, std::vector<uint8_t>>> inserts;
+    auto add = [&](size_t at, std::vector<uint8_t> bytes) {
+        for (auto& [pos, b] : inserts)
+            if (pos == at) {
+                b.insert(b.end(), bytes.begin(), bytes.end());
+                return;
+            }
+        inserts.emplace_back(at, std::move(bytes));
+    };
+    for (int j = 0; j < added; ++j) {
+        const int index = n + j;
+        const int he_y = first_y + j * spacing;            // before the shift
+        const int d = he_y - he_last->y;                   // relative to the original last item
+        add(hm_last->end, clone(out, *hm_last, item_name("hm", index), hm_last->y + d, labels[static_cast<size_t>(j)]));
+        add(he_last->end, clone(out, *he_last, item_name("he", index), he_last->y + d - up, labels[static_cast<size_t>(j)]));
+        for (const Record* c : {il, ir}) {
+            if (!c) continue;
+            std::vector<uint8_t> b(out.begin() + static_cast<long>(c->begin), out.begin() + static_cast<long>(c->end));
+            const std::string nm = "i" + digits(index) + c->name[3];
+            std::memcpy(b.data() + 4, nm.data(), 4);
+            put16(b, 10, c->y + d);
+            add(il ? il->end : c->end, std::move(b));
+        }
+    }
+    std::sort(inserts.begin(), inserts.end(), [](auto& a, auto& b) { return a.first > b.first; });
+    for (auto& [pos, b] : inserts) out.insert(out.begin() + static_cast<long>(pos), b.begin(), b.end());
+    if (item_count(out) != n + added) return std::nullopt;
     return out;
 }
 

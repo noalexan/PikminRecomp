@@ -22,6 +22,8 @@ Settings& settings();
 
 // Effective aspect ratio of the 3D view (window aspect, or 4/3).
 float view_aspect();
+// Adds Settings / Quit Game to the title and pause menu screens (enhance/menu_entries.cpp).
+void install_menu_entries();
 // Game frames per second in the unlocked mode (target_fps or the display refresh).
 int effective_fps();
 inline bool original_timing() { return settings().target_fps < 0; }

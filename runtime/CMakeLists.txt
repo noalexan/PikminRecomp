@@ -1,7 +1,7 @@
 # Host runtime library: ppc_* hooks and strong hle_* replacements for the SDK.
 file(GLOB PIKMIN_RT_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/rt/*.cpp ${CMAKE_CURRENT_SOURCE_DIR}/hle/*.cpp
      ${CMAKE_CURRENT_SOURCE_DIR}/hle/dsp/*.cpp
-     ${CMAKE_CURRENT_SOURCE_DIR}/enhance/*.cpp)
+     ${CMAKE_CURRENT_SOURCE_DIR}/enhance/*.cpp ${CMAKE_CURRENT_SOURCE_DIR}/ui/*.cpp)
 if (PIKMIN_GRAPHICS)
     file(GLOB PIKMIN_RT_GX_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/hle/gx/*.cpp)
     list(APPEND PIKMIN_RT_SOURCES ${PIKMIN_RT_GX_SOURCES})

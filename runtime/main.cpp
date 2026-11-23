@@ -274,6 +274,7 @@ int main(int argc, char** argv) {
     uint8_t header32[0x20];
     std::memcpy(header32, disc->header(), sizeof header32);
     rt::set_disc(std::move(disc));
+    enh::install_menu_entries();
     if (frames) rt::vi_set_frame_limit(frames);
     if (watchdog > 0) start_watchdog(watchdog);
 
