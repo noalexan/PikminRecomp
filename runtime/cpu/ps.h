@@ -3,6 +3,7 @@
 #define PPC_PS_H
 
 #include <math.h>
+#include <string.h>
 
 #include "memory.h"
 
@@ -25,16 +26,24 @@ static inline unsigned ppc_qsize(unsigned type) {
     }
 }
 
-static inline double ppc_dequant(ppc_ctx *c, uint32_t ea, unsigned type, int scale) {
+/* 2^k as a double (|k| <= 32): multiplying by it is exact, like ldexp, without the libm call. */
+PPC_INLINE double ppc_pow2(int k) {
+    uint64_t u = (uint64_t)(1023 + k) << 52;
+    double d;
+    memcpy(&d, &u, 8);
+    return d;
+}
+
+PPC_INLINE double ppc_dequant(ppc_ctx *c, uint32_t ea, unsigned type, int scale) {
     switch (type) {
     case PPC_QT_U8:
-        return ldexp((double)mem_r8(c, ea), -scale);
+        return (double)mem_r8(c, ea) * ppc_pow2(-scale);
     case PPC_QT_S8:
-        return ldexp((double)(int8_t)mem_r8(c, ea), -scale);
+        return (double)(int8_t)mem_r8(c, ea) * ppc_pow2(-scale);
     case PPC_QT_U16:
-        return ldexp((double)mem_r16(c, ea), -scale);
+        return (double)mem_r16(c, ea) * ppc_pow2(-scale);
     case PPC_QT_S16:
-        return ldexp((double)(int16_t)mem_r16(c, ea), -scale);
+        return (double)(int16_t)mem_r16(c, ea) * ppc_pow2(-scale);
     default:
         return (double)mem_rf32(c, ea);
     }
@@ -47,8 +56,12 @@ static inline double ppc_qclamp(double v, double lo, double hi) {
     return v > hi ? hi : v;
 }
 
-static inline void ppc_quant(ppc_ctx *c, uint32_t ea, double x, unsigned type, int scale) {
-    double v = ldexp(x, scale);
+PPC_INLINE void ppc_quant(ppc_ctx *c, uint32_t ea, double x, unsigned type, int scale) {
+    if (type != PPC_QT_U8 && type != PPC_QT_S8 && type != PPC_QT_U16 && type != PPC_QT_S16) {
+        mem_wf32(c, ea, (float)x);
+        return;
+    }
+    double v = x * ppc_pow2(scale);
     switch (type) {
     case PPC_QT_U8:
         mem_w8(c, ea, (uint8_t)ppc_qclamp(v, 0.0, 255.0));
@@ -68,7 +81,7 @@ static inline void ppc_quant(ppc_ctx *c, uint32_t ea, double x, unsigned type, i
     }
 }
 
-static inline void ppc_psq_load(ppc_ctx *c, uint32_t ea, int w, int gqr_idx, double *ps0, double *ps1) {
+PPC_INLINE void ppc_psq_load(ppc_ctx *c, uint32_t ea, int w, int gqr_idx, double *ps0, double *ps1) {
     uint32_t g = c->gqr[gqr_idx];
     unsigned type = (g >> 16) & 7;
     int scale = ppc_qscale((g >> 24) & 0x3F);
@@ -76,7 +89,7 @@ static inline void ppc_psq_load(ppc_ctx *c, uint32_t ea, int w, int gqr_idx, dou
     *ps1 = w ? 1.0 : ppc_dequant(c, ea + ppc_qsize(type), type, scale);
 }
 
-static inline void ppc_psq_store(ppc_ctx *c, uint32_t ea, double ps0, double ps1, int w, int gqr_idx) {
+PPC_INLINE void ppc_psq_store(ppc_ctx *c, uint32_t ea, double ps0, double ps1, int w, int gqr_idx) {
     uint32_t g = c->gqr[gqr_idx];
     unsigned type = g & 7;
     int scale = ppc_qscale((g >> 8) & 0x3F);

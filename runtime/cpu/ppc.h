@@ -11,6 +11,10 @@ extern "C" {
 #define PPC_NORETURN _Noreturn
 #endif
 
+/* Small helpers used by every translated instruction: always inlined (GCC otherwise leaves
+ * out-of-line copies in the largest generated functions). */
+#define PPC_INLINE static inline __attribute__((always_inline))
+
 #define PPC_RAM_SIZE 0x01800000u /* 24 MB main RAM */
 #define PPC_LC_BASE 0xE0000000u  /* Gekko locked cache */
 #define PPC_LC_SIZE 0x4000u
