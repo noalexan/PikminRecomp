@@ -72,6 +72,7 @@ uint32_t g_proj_type = 0;
 bool g_have_proj = false;
 int g_p2d_depth = 0;   // inside P2DScreen::draw
 int g_clip_depth = 0;  // inside a menu screen that is clipped to 4:3 (see clip_to_4_3)
+int g_wide_back_depth = 0;  // inside a memory-card / save screen: its full-screen backdrop spans the window
 int g_hud_depth = 0;   // inside zen::DrawGameInfo::draw
 bool g_viewport_full = true;
 std::vector<Map2D> g_anchors;  // HUD element maps (innermost last)
@@ -401,6 +402,26 @@ void clipped_menu(ppc_ctx* c, void (*orig)(ppc_ctx*)) {
     if (orig) orig(c);
     if (--enh::g_clip_depth == 0) enh::reissue();
 }
+
+// Memory-card and save-select screens: as clipped_menu, but a picture covering the whole 640x480
+// screen (the black `blck` backdrop) is drawn across the full window, so the screen has no
+// pillarbox edges. Its texture is a plain dark backdrop, so stretching it doesn't show.
+void wide_back_menu(ppc_ctx* c, void (*orig)(ppc_ctx*)) {
+    ++enh::g_wide_back_depth;
+    clipped_menu(c, orig);
+    --enh::g_wide_back_depth;
+}
+
+// A full-screen backdrop picture of a save screen (see wide_back_menu).
+bool is_wide_backdrop(ppc_ctx* c, uint32_t pane) {
+    if (enh::g_wide_back_depth == 0 || enh::g_clip_depth == 0 || !enh::g_anchors.empty()) return false;
+    if (rt::rd16(c, pane + 0x8) != 0x12) return false;  // P2DPicture
+    const int x0 = static_cast<int>(rt::arg(c, 1)) + enh::rs16(c, pane + 0x18);
+    const int y0 = static_cast<int>(rt::arg(c, 2)) + enh::rs16(c, pane + 0x1a);
+    const int x1 = static_cast<int>(rt::arg(c, 1)) + enh::rs16(c, pane + 0x1c);
+    const int y1 = static_cast<int>(rt::arg(c, 2)) + enh::rs16(c, pane + 0x1e);
+    return x0 <= 0 && y0 <= 0 && x1 >= static_cast<int>(enh::kW) && y1 >= static_cast<int>(enh::kH);
+}
 }  // namespace
 
 void hle_draw__Q23zen13ogScrTitleMgrFR8Graphics(ppc_ctx* c) {
@@ -415,22 +436,22 @@ void hle_draw__Q23zen13ogScrStartMgrFR8Graphics(ppc_ctx* c) {
 
 void hle_draw__Q23zen18ogScrFileSelectMgrFR8Graphics(ppc_ctx* c) {
     HLE_ENTRY(c, "zen::ogScrFileSelectMgr::draw");
-    clipped_menu(c, f_8018a150_orig);
+    wide_back_menu(c, f_8018a150_orig);
 }
 
 void hle_draw__Q23zen18ogScrFileChkSelMgrFR8Graphics(ppc_ctx* c) {
     HLE_ENTRY(c, "zen::ogScrFileChkSelMgr::draw");
-    clipped_menu(c, f_80192028_orig);
+    wide_back_menu(c, f_80192028_orig);
 }
 
 void hle_draw__Q23zen14ogScrMemChkMgrFR8Graphics(ppc_ctx* c) {
     HLE_ENTRY(c, "zen::ogScrMemChkMgr::draw");
-    clipped_menu(c, f_8018d6e8_orig);
+    wide_back_menu(c, f_8018d6e8_orig);
 }
 
 void hle_draw__Q23zen19ogScrMakeDefaultMgrFR8Graphics(ppc_ctx* c) {
     HLE_ENTRY(c, "zen::ogScrMakeDefaultMgr::draw");
-    clipped_menu(c, f_80192884_orig);
+    wide_back_menu(c, f_80192884_orig);
 }
 
 // HUD elements get the map planned for them in plan_hud; their subtree draws inside it.
@@ -438,7 +459,13 @@ void hle_draw__7P2DPaneFiiPC14P2DGrafContextb(ppc_ctx* c) {
     HLE_ENTRY(c, "P2DPane::draw");
     const uint32_t pane = rt::arg(c, 0);
     bool pushed = false;
-    if (enh::g_hud_depth > 0 && enh::g_anchors.empty()) {
+    if (is_wide_backdrop(c, pane)) {
+        enh::Map2D m;
+        m.sx = 1.f / enh::squeeze();  // undoes the 4:3 squeeze: the 640 logical pixels span the window
+        enh::g_anchors.push_back(m);
+        pushed = true;
+        enh::reissue();
+    } else if (enh::g_hud_depth > 0 && enh::g_anchors.empty()) {
         auto it = enh::g_hud_plan.find(pane);
         if (it != enh::g_hud_plan.end()) {
             enh::g_anchors.push_back(it->second);
