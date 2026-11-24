@@ -25,6 +25,7 @@ char* fmt_hex32(char out[11], uint32_t v);  // "0x%08x"
 char* fmt_dec(char out[21], int64_t v);
 
 extern const char* const kBuildHash;
+extern const char* const kVersion;  // VERSION file, e.g. "0.2.4"
 extern const char* const kBuildType;
 
 }  // namespace rt

@@ -9,6 +9,6 @@ void hud_init(const std::string& config_path, bool on);
 void hud_set(bool on, bool save);  // saves debug_hud = true|false when `save`
 bool hud_on();
 void hud_toggle();  // F3
-void hud_draw();    // inside the ImGui frame, before aurora_end_frame
+void hud_draw();    // inside the ImGui frame, before aurora_end_frame (also the title-screen version)
 
 }  // namespace ui

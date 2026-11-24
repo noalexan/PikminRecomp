@@ -21,6 +21,13 @@ struct CrashInfo {
 // Async-signal-safe. Writes the report once per process; later calls return false at once.
 bool crash_report(const CrashInfo& info);
 
+// Window runs: after the report, start `<this exe> --crash-dialog REASON LOG` (a new process, so
+// nothing runs inside the dying one but fork/exec or CreateProcess) to tell the player where the
+// report is. PIKMIN_NO_CRASH_DIALOG=1 turns it off.
+void crash_enable_dialog();
+// --crash-dialog REASON LOG: shows the message box, returns the exit code.
+int crash_dialog_main(const char* reason, const char* log);
+
 // --crash-test KIND[:RETRACE] (tests only). KIND: segv, bad_access, abort, double_fault, hang.
 bool crash_test_arm(const char* spec);
 void crash_test_check(uint32_t retrace);  // called by VI at every retrace

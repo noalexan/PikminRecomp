@@ -4,7 +4,7 @@
 # modules it uses, and qt.conf. usage: launcher/packaging/windows.sh [VERSION]
 set -eu
 root="$(cd "$(dirname "$0")/../.." && pwd)"
-ver="${1:-0.2.3}"
+ver="${1:-$(cat "$root/VERSION")}"
 mingw=/usr/x86_64-w64-mingw32/sys-root/mingw
 build="$root/build/launcher-win"
 stage="$root/build/launcher-win-stage/PikminRecompLauncher"

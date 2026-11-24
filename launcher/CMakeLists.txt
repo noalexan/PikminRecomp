@@ -1,6 +1,7 @@
 # Pikmin Recomp launcher: the only published artifact. Standalone project (no game dependencies).
 cmake_minimum_required(VERSION 3.25)
-set(PIKMIN_LAUNCHER_VERSION "0.2.3" CACHE STRING "Launcher version (from the release tag)")
+file(STRINGS ${CMAKE_CURRENT_SOURCE_DIR}/../VERSION _pikmin_version LIMIT_COUNT 1)  # one version for game and launcher
+set(PIKMIN_LAUNCHER_VERSION "${_pikmin_version}" CACHE STRING "Launcher version (from the release tag)")
 project(PikminRecompLauncher VERSION ${PIKMIN_LAUNCHER_VERSION} LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

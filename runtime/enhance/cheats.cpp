@@ -41,6 +41,8 @@ constexpr uint32_t kMeBirthMode = 0x803ecc4du;  // PikiMgr::meBirthMode (u8): al
 constexpr uint32_t kPikiInit = 0x800cbefcu;     // Piki::init(Navi*)
 constexpr uint32_t kInitColor = 0x800c9730u;    // Piki::initColor(int)
 constexpr uint32_t kChangeMode = 0x800cd084u;   // Piki::changeMode(int, Navi*)
+constexpr uint32_t kAIConstant = 0x803ecb60u;   // AIConstant* AIConstant::_instance
+constexpr uint32_t kGameStatUpdate = 0x80112418u;  // GameStat::update()
 constexpr uint32_t kVtBirth = 0x78;             // PikiMgr::birth()
 constexpr uint32_t kVtGetCreature = 0x8, kVtGetFirst = 0xc, kVtGetNext = 0x10, kVtIsDone = 0x14;
 constexpr uint32_t kVtResetPosition = 0x2c, kVtSetFlower = 0x130;  // Piki (ViewPiki)
@@ -103,12 +105,33 @@ bool valid_ptr(uint32_t p) { return p >= 0x80000000u && p < 0x81800000u; }
 
 uint32_t g_seen_navi = 0;  // the captain Navi::update ran for since the last game frame began
 
+int for_each_piki(ppc_ctx* c, GuestCall& g, int happa) {
+    const uint32_t mgr = rt::rd32(c, kPikiMgr);
+    if (!valid_ptr(mgr)) return 0;
+    int n = 0;
+    for (uint32_t i = g.vcall(mgr, kVtGetFirst); !g.vcall(mgr, kVtIsDone, i); i = g.vcall(mgr, kVtGetNext, i)) {
+        const uint32_t p = g.vcall(mgr, kVtGetCreature, i == 0xffffffffu ? 0 : i);
+        if (!valid_ptr(p)) continue;
+        if (happa >= 0) g.vcall(p, kVtSetFlower, static_cast<uint32_t>(happa));
+        ++n;
+    }
+    return n;
+}
+
 void spawn(ppc_ctx* c, GuestCall& g, uint32_t navi, const Spawn& s) {
     const uint32_t mgr = rt::rd32(c, kPikiMgr);
     if (!valid_ptr(mgr)) return;
+    // The game's limit of pikmin on the field (AIConstant +0x120, 100). PikiMgr::birth checks it
+    // against GameStat::mapPikis, which only GameStat::update recomputes (once per frame), so
+    // births in a loop never hit it: count the live pikmin instead. Past 100 the game breaks
+    // (a crash in ActTransport::exec after spawning 150).
+    const uint32_t aic = rt::rd32(c, kAIConstant);
+    const int limit = valid_ptr(aic) ? static_cast<int>(rt::rd32(c, aic + 0x120)) : 100;
+    const int room = std::max(0, std::min(limit, 100) - for_each_piki(c, g, -1));
+    const int count = std::min(s.count, room);
     const float nx = rdf(c, navi + 0x94), ny = rdf(c, navi + 0x98), nz = rdf(c, navi + 0x9c);
     int made = 0;
-    for (int i = 0; i < s.count; ++i) {
+    for (int i = 0; i < count; ++i) {
         rt::wr8(c, kMeBirthMode, 1);
         const uint32_t p = g.vcall(mgr, kVtBirth);
         rt::wr8(c, kMeBirthMode, 0);
@@ -126,21 +149,10 @@ void spawn(ppc_ctx* c, GuestCall& g, uint32_t navi, const Spawn& s) {
         g.call(kChangeMode, p, 1, navi);  // 1 = squad (ActCrowd); 0 would leave it idle
         ++made;
     }
+    g.call(kGameStatUpdate);  // mapPikis and the HUD totals
     rt::log("cheat", "spawned %d pikmin (color %d, happa %d)", made, s.color, s.happa);
 }
 
-int for_each_piki(ppc_ctx* c, GuestCall& g, int happa) {
-    const uint32_t mgr = rt::rd32(c, kPikiMgr);
-    if (!valid_ptr(mgr)) return 0;
-    int n = 0;
-    for (uint32_t i = g.vcall(mgr, kVtGetFirst); !g.vcall(mgr, kVtIsDone, i); i = g.vcall(mgr, kVtGetNext, i)) {
-        const uint32_t p = g.vcall(mgr, kVtGetCreature, i == 0xffffffffu ? 0 : i);
-        if (!valid_ptr(p)) continue;
-        if (happa >= 0) g.vcall(p, kVtSetFlower, static_cast<uint32_t>(happa));
-        ++n;
-    }
-    return n;
-}
 }  // namespace
 
 Cheats& cheats() { return g_cheats; }

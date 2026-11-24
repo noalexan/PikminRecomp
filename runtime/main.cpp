@@ -135,7 +135,7 @@ void open_run_log(int argc, char** argv, const rt::Config& cfg, const enh::Setti
     rt::crash_install();
     std::string cmd;
     for (int i = 0; i < argc; ++i) cmd += (i ? " " : "") + std::string(argv[i]);
-    rt::log_file_only("run", "pikmin %s (%s)", rt::kBuildHash, rt::kBuildType);
+    rt::log_file_only("run", "pikmin %s %s (%s)", rt::kVersion, rt::kBuildHash, rt::kBuildType);
     rt::log_file_only("run", "command: %s", cmd.c_str());
     rt::log_file_only("run", "mode: %s, clock: %s", mode, fast ? "fast" : "real-time");
     rt::log_file_only("run", "disc: %s", disc_path.c_str());
@@ -151,6 +151,7 @@ void open_run_log(int argc, char** argv, const rt::Config& cfg, const enh::Setti
 }  // namespace
 
 int main(int argc, char** argv) {
+    if (argc == 4 && std::strcmp(argv[1], "--crash-dialog") == 0) return rt::crash_dialog_main(argv[2], argv[3]);
     std::string config_path = rt::default_config_path(), disc_arg;
     bool headless_flag = false, offscreen = false, fast = false, debug_hud_flag = false;
     uint32_t shot_frame = 0;
@@ -236,6 +237,7 @@ int main(int argc, char** argv) {
     if (headless && fps_arg.empty()) es.target_fps = -1;
 
     open_run_log(argc, argv, cfg, es, disc_path, headless ? "headless" : offscreen ? "offscreen" : "window", fast);
+    if (!headless && !offscreen) rt::crash_enable_dialog();  // a message box pointing at the report
     if (!record_path.empty()) {
         const std::string header = std::string("pikmin ") + rt::kBuildHash + " clock=" + (fast ? "fast" : "real-time") +
                                    " config=" + config_path;

@@ -29,6 +29,7 @@ void install_menu_entries();
 int take_menu_choice(uint32_t menu);
 // ogScrTitleMgr::draw: the original, or our Display / Game / Quit screen (enhance/settings_menu.cpp).
 void title_draw(ppc_ctx* c);
+bool title_visible();  // the title screen drew within the last 0.25 s (version overlay)
 // Game frames per second in the unlocked mode (target_fps or the display refresh).
 int effective_fps();
 inline bool original_timing() { return settings().target_fps < 0; }

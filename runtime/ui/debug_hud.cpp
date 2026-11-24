@@ -1,11 +1,13 @@
 #include "ui/debug_hud.hpp"
 
 #include <algorithm>
+#include <cfloat>
 #include <chrono>
 #include <cstdio>
 
 #include "enhance/enhance.hpp"
 #include "rt/config.hpp"
+#include "rt/diag.hpp"
 #include "rt/gfx.hpp"
 #include "rt/log.hpp"
 #include "rt/perf.hpp"
@@ -40,7 +42,24 @@ void hud_toggle() { hud_set(!g_on, true); }
 #ifndef PIKMIN_GRAPHICS
 void hud_draw() {}
 #else
+// The version number at the bottom-right corner of the title screen.
+void version_draw() {
+    if (!enh::title_visible()) return;
+    const ImGuiIO& io = ImGui::GetIO();
+    const float scale = std::max(1.f, io.DisplaySize.y / 720.f);
+    char text[64];
+    std::snprintf(text, sizeof text, "v%s", rt::kVersion);
+    ImFont* font = ImGui::GetFont();
+    const float size = ImGui::GetFontSize() * 1.25f * scale, margin = 14.f * scale;
+    const ImVec2 ext = font->CalcTextSizeA(size, FLT_MAX, 0.f, text);
+    const ImVec2 pos(io.DisplaySize.x - ext.x - margin, io.DisplaySize.y - ext.y - margin);
+    ImDrawList* dl = ImGui::GetForegroundDrawList();
+    dl->AddText(font, size, ImVec2(pos.x + scale, pos.y + scale), IM_COL32(0, 0, 0, 160), text);
+    dl->AddText(font, size, pos, IM_COL32(255, 255, 255, 190), text);
+}
+
 void hud_draw() {
+    if (ImGui::GetCurrentContext() && ImGui::GetCurrentContext()->WithinFrameScope) version_draw();
     if (!g_on || !ImGui::GetCurrentContext() || !ImGui::GetCurrentContext()->WithinFrameScope) return;
     const double now = std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
     const rt::SysSample& sys = rt::sysinfo_sample(now);

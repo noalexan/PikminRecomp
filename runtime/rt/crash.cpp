@@ -10,15 +10,19 @@
 #include <unistd.h>
 #endif
 
+#include <SDL3/SDL_messagebox.h>
+
 #include <atomic>
 #include <cstdlib>
 #include <cstring>
+#include <string>
 #include <string_view>
 
 #include "rt/diag.hpp"
 #include "rt/guest.hpp"
 #include "rt/input_record.hpp"
 #include "rt/irq.hpp"
+#include "rt/platform.hpp"
 #include "rt/sched.hpp"
 #include "rt/trace.hpp"
 
@@ -32,6 +36,48 @@ std::atomic<bool> g_reported{false};
 #ifndef _WIN32
 alignas(16) char g_altstack[64 * 1024];
 #endif
+
+// Crash dialog: paths copied at startup, nothing allocated in the handler.
+bool g_dialog = false;
+char g_exe[4096];
+char g_log[4096];
+
+void launch_dialog(const char* reason) {
+    if (!g_dialog) return;
+#ifdef _WIN32
+    static wchar_t cmd[3 * 4096];
+    size_t n = 0;
+    auto add = [&](const char* s, bool quote) {
+        if (quote && n < 3 * 4096 - 1) cmd[n++] = L'"';
+        // The exe and log paths were stored as UTF-8: widen them properly.
+        const int w = MultiByteToWideChar(CP_UTF8, 0, s, -1, cmd + n, static_cast<int>(3 * 4096 - n - 3));
+        if (w > 0) n += static_cast<size_t>(w - 1);
+        if (quote && n < 3 * 4096 - 2) cmd[n++] = L'"';
+        if (n < 3 * 4096 - 1) cmd[n++] = L' ';
+        cmd[n] = 0;
+    };
+    add(g_exe, true);
+    add("--crash-dialog", false);
+    add(reason, true);
+    add(g_log, true);
+    STARTUPINFOW si{};
+    si.cb = sizeof si;
+    PROCESS_INFORMATION pi{};
+    if (CreateProcessW(nullptr, cmd, nullptr, nullptr, FALSE, DETACHED_PROCESS, nullptr, nullptr, &si, &pi)) {
+        CloseHandle(pi.hThread);
+        CloseHandle(pi.hProcess);
+    }
+#else
+    const pid_t pid = fork();
+    if (pid == 0) {
+        setsid();  // outlives the crashing process
+        char flag[] = "--crash-dialog";
+        char* argv[] = {g_exe, flag, const_cast<char*>(reason), g_log, nullptr};
+        execv(g_exe, argv);
+        _exit(127);
+    }
+#endif
+}
 
 enum class Test { None, Segv, BadAccess, Abort, DoubleFault, Hang };
 Test g_test = Test::None;
@@ -136,6 +182,8 @@ bool crash_report(const CrashInfo& info) {
     put("\n=== pikmin crash: ");
     put(info.reason);
     put(" ===\nbuild ");
+    put(kVersion);
+    put(" ");
     put(kBuildHash);
     put(" (");
     put(kBuildType);
@@ -209,7 +257,27 @@ bool crash_report(const CrashInfo& info) {
     put("log file ");
     put(log_path().empty() ? "(none)" : log_path().c_str());
     put("\n=== end ===\n");
+    launch_dialog(info.reason);
     return true;
+}
+
+void crash_enable_dialog() {
+    if (const char* off = std::getenv("PIKMIN_NO_CRASH_DIALOG"); off && *off && *off != '0') return;
+    const std::string exe = plat::exe_path();
+    const std::string& log = log_path();
+    if (exe.empty() || exe.size() >= sizeof g_exe || log.size() >= sizeof g_log) return;
+    std::memcpy(g_exe, exe.c_str(), exe.size() + 1);
+    std::memcpy(g_log, log.c_str(), log.size() + 1);
+    g_dialog = true;
+}
+
+int crash_dialog_main(const char* reason, const char* log) {
+    std::string msg = "Pikmin Recomp crashed (";
+    msg += reason;
+    msg += ").\n\nA crash report was saved in:\n";
+    msg += (log && *log) ? log : "(no log file)";
+    msg += "\n\nPlease attach this file when you report the problem.";
+    return SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Pikmin Recomp crashed", msg.c_str(), nullptr) ? 0 : 1;
 }
 
 bool crash_test_arm(const char* spec) {

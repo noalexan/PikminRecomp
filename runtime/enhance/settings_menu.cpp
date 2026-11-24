@@ -8,6 +8,7 @@
 // Quit Game it idles (the game sees an index it ignores) and our hook runs the Options list
 // (Sound, Rumble, Display, Game) or the quit confirmation over it, then re-opens the pause menu.
 // The Sound and Rumble screens there do what ogScrTitleMgr::update does for them.
+#include <chrono>
 #include <cstdio>
 #include <cstring>
 #include <map>
@@ -339,7 +340,15 @@ void hle_update__Q23zen13ogScrTitleMgrFP10Controller(ppc_ctx* c) {
 
 }  // extern "C"
 
+namespace {
+double g_title_drawn = -1.0;  // host time of the last title-screen draw
+double now_s() { return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
+}
+
+bool enh::title_visible() { return g_title_drawn >= 0.0 && now_s() - g_title_drawn < 0.25; }
+
 void enh::title_draw(ppc_ctx* c) {
+    g_title_drawn = now_s();
     const uint32_t self = rt::arg(c, 0), gfx = rt::arg(c, 1);
     auto it = g_titles.find(self);
     const int16_t mode = static_cast<int16_t>(rt::rd16(c, self + 0x98));
