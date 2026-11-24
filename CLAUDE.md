@@ -54,7 +54,7 @@ python3 -m recomp --dol orig/GPIP01/sys/main.dol --map orig/GPIP01/files/dataDir
 3. `translate.py` + `emit/*` emit one C function per guest function, `void f_<addr>(ppc_ctx *c)`.
    - Branches inside a function become `goto`s.
    - Calls become direct C calls. Self-recursion is a real call. Only `bl` to the next instruction (the PC-read idiom) becomes a goto.
-   - Jump tables are resolved to `switch`es. Indirect calls go through `ppc_lookup(addr)`.
+   - Jump tables are resolved to `switch`es. Indirect calls go through `ppc_lookup(addr)` (an open-addressing hash table generated in `functable.c`).
 4. `program.py` decides overrides from `recomp/overrides.toml`.
    - `[libraries] override` lists whole SDK libraries.
    - `[functions]` lists per-function exceptions: `"override"`, `"translate"`, `"poll"` (translated, with safe points at entry and loop heads) or `"hook"` (translated as `f_<addr>_orig`; every call goes to host `hle_<name>`, which may call the original; used by `runtime/enhance/`).
@@ -68,6 +68,7 @@ python3 -m recomp --dol orig/GPIP01/sys/main.dol --map orig/GPIP01/files/dataDir
   - 24 MB big-endian RAM at `0x80000000` (with the `0xC0000000` uncached mirror),
   - the 16 KB locked cache at `0xE0000000`,
   - everything at `phys >= 0x0C000000` going to `ppc_mmio_read/write`.
+  - Only the plain-RAM fast path is force-inlined (`PPC_INLINE`) into translated code; MMIO, locked cache and bad addresses go through out-of-line `mem_*_slow` functions. Inlining everything grew the binary's text by about 60%.
 - The small-data bases: r13 = `0x803e9c60`, r2 = `0x803f5120`.
 
 ### Host runtime: `runtime/rt` + `runtime/hle`
@@ -106,7 +107,8 @@ python3 -m recomp --dol orig/GPIP01/sys/main.dol --map orig/GPIP01/files/dataDir
 - Game functions are patched through `"hook"` entries in `overrides.toml`, never by editing generated code.
 - **Widescreen (Hor+):** 4:3 cameras get the window aspect, with the same vertical FOV, for both projection and frustum culling. 2D/ortho drawing is pillarboxed to 4:3, except full-screen fades, screen-copy effects and creature life gauges. Cinematic cameras (`CamDataInfo`: title screen, cutscenes) are widened too. The title and memory-card/file-select screens are also scissored to the 4:3 area, because they park panes just off the 640×480 screen.
 - **HUD:** gameplay HUD clusters shrink toward the edge or corner they touch (`hud_scale`, default 0.5).
-- **Frame rate:** the game loop runs at the display refresh (240 fps with vsync). The frame time is scaled by 0.833 to match PAL gameplay speed (25 fps capped at 1/30 s). Cutscenes and camera smoothing are converted to original-frame units. Per-frame steps (particle emission `SetPtclsLife`, the menu cursor trail `SpectrumCursorMgr`) run once per elapsed original frame (`enh::orig_frame_steps`, shared so they stay in lockstep; `enhance/particles.cpp`). The 50 Hz retrace still drives input scripts and screenshots.
+- **Frame rate:** the game loop runs at the display refresh (240 fps with vsync). The frame time is scaled by 0.833 to match PAL gameplay speed (25 fps capped at 1/30 s). Cutscenes and camera smoothing are converted to original-frame units. Per-frame steps run once per elapsed original frame (`enh::orig_frame_steps`, shared so they stay in lockstep): the whole `zen::particleManager::update` (with the original frame time; particle motion, drag, emission and trail children are per call) and the menu cursor trail `SpectrumCursorMgr`. Particles are drawn extrapolated by velocity × `enh::orig_frame_phase()` so they stay smooth (`enhance/particles.cpp`). The 50 Hz retrace still drives input scripts and screenshots.
+- **Cutscenes:** in-game movies (`MoviePlayer` playing, `*0x803a2814 + 0x124`) fill a wide screen: original horizontal FOV, top/bottom cropped (the intro's sky shots are 4:3 backdrops that showed side bars under Hor+). Config `cutscenes = "fill"|"wide"`. **Start** during a movie skips it in turbo (`enhance/cutscene_skip.cpp`): every frame runs as one original frame, unpaced, until the movie list ends. Jumping or fast-forwarding only the cinematic loses gameplay driven by creature animations (day 1: the Onion's seed).
 - **Boot logo:** in real-time runs the boot loads (`System::endLoading` hook) end no sooner than 3 s after the first one starts, so the red Nintendo logo stays up about as long as it did from a real disc. `--fast` keeps the original timeline.
 - **Camera:** right stick orbits and tilts (elevation 8–82°); L1 + right stick swarms; keyboard arrows = camera, Left Shift + arrows = swarm.
 - **In-game settings and quit** (no ImGui; drawn by the game's own `zen::DrawMenu`):
@@ -114,8 +116,9 @@ python3 -m recomp --dol orig/GPIP01/sys/main.dol --map orig/GPIP01/files/dataDir
   - Screens are made at boot in memory (`enhance/menu_entries.cpp`, `enhance/settings_screens.cpp`, `rt::blo` edits, `rt::arc::add`): patched `m_select`/`m_selec2`/`pause`/`option.blo` and new `x_disp`/`x_game` (from the English Sound screen), `x_popt`, `x_quit` in every `blo__<lang>.arc`.
   - `enhance/settings_menu.cpp` hooks `ogScrTitleMgr` (ctor/update; draw via `enh::title_draw` from the widescreen hook) and `ogScrPauseMgr` (ctor/update/draw). The `DrawMenu::update` hook hides added items from the game (`enh::take_menu_choice`). Values apply live and changed keys are written to `config.toml` (`ui/settings.cpp`, `rt::save_config_value`).
   - **F11** toggles fullscreen (saved). **Esc** and the DS4 touchpad act as Start.
+- **Cheat menu (F1, or L3 + R3 on a gamepad; B/Esc closes):** Dear ImGui window (`ui/cheat_menu.cpp`, `rt::gfx_set_menu`), gamepad/keyboard navigation enabled only while open; the guest sees a released pad meanwhile (`enh::cheats_filter_pad`). Cheats (`enhance/cheats.cpp`): spawn pikmin (color/count/leaf-bud-flower, straight into the squad), all flowers, invincible Olimar (`Navi+0x58`), freeze the day (`WorldClock::update` hook), fly (`Navi::update` hook; D-pad up/down; sets creature flag `0x40` at `+0xc8` while flying, without which `Creature::updateAI` applies the stick velocity only on the ground). Requests are queued and run at the top of the next game frame (`cheats_frame` from the `updateSysClock` hook) by calling game functions through `GuestCall` (registers restored, fresh frame below the hook's stack), only while `Navi::update` ran the previous frame. Player sheet: `docs/cheats.md`. ImGui isn't in offscreen screenshots (captured before the overlay); check it in a real window.
 - **Debug HUD (F3):** ImGui corner panel (`ui/debug_hud.cpp`, drawn through `rt::gfx_set_hud`): fps / ms (0.5 s), 1% low (4 s), frame-time graph (drops red), game/present/pacing breakdown, CPU (`/proc`), GPU name/backend/busy % (Dawn adapter; NVML via dlopen or amdgpu sysfs, `rt/sysinfo`), last drop and cause. Frame records in `rt/perf` (host steady clock only). A drop is a frame over 2× max(target, 0.5 s average); each is logged as `[perf] drop N ms at retrace R: cause`. State saved as `debug_hud`; `--debug-hud` shows it for one run.
-- **Config / CLI:** `aspect` (`auto`|`4:3`), `target_fps` (`auto`|`original`|N), `hud_scale`, `camera` (`modern`|`original`); flags `--aspect --target-fps --hud-scale --camera`. `--headless` defaults to original timing. `PIKMIN_TIMING=1`, `PIKMIN_HUD_DUMP=1`.
+- **Config / CLI:** `aspect` (`auto`|`4:3`), `target_fps` (`auto`|`original`|N), `hud_scale`, `camera` (`modern`|`original`), `cutscenes` (`fill`|`wide`, config only); flags `--aspect --target-fps --hud-scale --camera`. `--headless` defaults to original timing. `PIKMIN_TIMING=1`, `PIKMIN_HUD_DUMP=1`.
 - **Clock:** safe points read `CLOCK_MONOTONIC_COARSE` and the precise clock only when an event is within 5 ms. This laptop's clock source is HPET, which made precise reads cap the loop at about 85 fps.
 
 ### aurora
@@ -145,7 +148,7 @@ python3 -m recomp --dol orig/GPIP01/sys/main.dol --map orig/GPIP01/files/dataDir
   - Input script lines are `FRAME BUTTONS [STICKX STICKY]`, e.g. `300 START`, `303 -`, `660 - 0 127`.
   - Menus follow the analog stick, not the D-pad.
   - Screenshots are keyed to the retrace count.
-- **Diagnostic env vars:** `PIKMIN_GFX_STATS=1` (per-frame aurora stats), `PIKMIN_GFX_TRACE=1` (display-copy calls), `PIKMIN_ARRAY_DEBUG=1` (large vertex-array uploads), `PIKMIN_TEST_LOG=1` (aurora info logs in GPU tests), `PIKMIN_AUDIO_DUMP=out.wav` (mixed audio in any mode), `PIKMIN_AUDIO_DEBUG=1`, `PIKMIN_POLL_TRACE=1`.
+- **Diagnostic env vars:** `PIKMIN_GFX_STATS=1` (per-frame aurora stats), `PIKMIN_GFX_TRACE=1` (display-copy calls), `PIKMIN_ARRAY_DEBUG=1` (large vertex-array uploads), `PIKMIN_TEST_LOG=1` (aurora info logs in GPU tests), `PIKMIN_AUDIO_DUMP=out.wav` (mixed audio in any mode), `PIKMIN_AUDIO_DEBUG=1`, `PIKMIN_POLL_TRACE=1`, `PIKMIN_CHEATS=fly,invincible,freeze,flowers,spawn=N[:color[:happa]]` (cheats switched on when gameplay starts, for scripted runs and profiling).
 - **Real-window output** can differ from offscreen output. Check it with `spectacle -b -n -a -o out.png` while the game runs.
 
 ## Installation and Steam

@@ -103,6 +103,10 @@ Config parse_config(const std::string& text) {
             std::string v = is_str ? value.substr(1, value.size() - 2) : value;
             if (v == "modern" || v == "original") cfg.modern_camera = v == "modern";
             else warn("camera must be \"modern\" or \"original\"");
+        } else if (key == "cutscenes") {
+            std::string v = is_str ? value.substr(1, value.size() - 2) : value;
+            if (v == "fill" || v == "wide") cfg.cutscene_fill = v == "fill";
+            else warn("cutscenes must be \"fill\" or \"wide\"");
         } else {
             warn("unknown key '" + key + "' ignored");
         }

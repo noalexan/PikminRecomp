@@ -23,6 +23,7 @@
 #include "rt/crash.hpp"
 #include "rt/diag.hpp"
 #include "rt/trace.hpp"
+#include "ui/cheat_menu.hpp"
 #include "ui/debug_hud.hpp"
 #include "ui/settings.hpp"
 #include "rt/sysinfo.hpp"
@@ -218,6 +219,7 @@ int main(int argc, char** argv) {
     es.target_fps = cfg.target_fps;
     es.hud_scale = cfg.hud_scale;
     es.modern_camera = cfg.modern_camera;
+    es.cutscene_fill = cfg.cutscene_fill;
     if (!aspect_arg.empty() && (es.aspect = rt::parse_aspect(aspect_arg)) < 0.f) fail("--aspect expects auto or 4:3");
     if (!fps_arg.empty() && (es.target_fps = rt::parse_fps(fps_arg)) < -1) {
         fail("--target-fps expects auto, original or 20-1000");
@@ -271,6 +273,7 @@ int main(int argc, char** argv) {
     ui::init(config_path, cfg.fullscreen, cfg.vsync, !headless && !offscreen);
     ui::hud_init(config_path, !headless && (cfg.debug_hud || debug_hud_flag));
     rt::gfx_set_hud(ui::hud_draw, ui::hud_toggle);
+    rt::gfx_set_menu(ui::cheat_menu_draw, ui::cheat_menu_toggle);
     if (!headless) rt::sysinfo_init(rt::plat::tid(), rt::gfx_adapter_info());
 
     static ppc_ctx ctx{};

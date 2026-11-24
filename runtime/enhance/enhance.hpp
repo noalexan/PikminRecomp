@@ -15,6 +15,7 @@ struct Settings {
     int target_fps = 0;         // 0 = display refresh, -1 = original PAL VI pacing, else a cap
     float hud_scale = 0.5f;     // gameplay HUD size, anchored to the screen edges
     bool modern_camera = true;  // right stick = camera; swarm = modifier + right stick
+    bool cutscene_fill = true;  // in-game movies keep the 4:3 horizontal FOV (crop) instead of Hor+
     bool window_vsync = false;  // presenting to a vsync'd window (vsync paces frames)
     int display_hz = 60;        // refresh rate of the display (or 60 offscreen)
 };
@@ -37,6 +38,35 @@ float orig_frames();
 // Whole original frames that elapsed this frame (0 most frames at 240 fps; 1 in the original mode).
 // Shared by every per-frame step so they stay in lockstep, as on PAL (enhance/particles.cpp).
 int orig_frame_steps();
+// Fraction [0, 1) of the next original frame already elapsed (0 in the original mode): for
+// drawing state that only advances per original frame (enhance/particles.cpp).
+float orig_frame_phase();
+// Frame time the original game used for one frame (min(retraces x 20 ms, 1/30 s)).
+float orig_frame_dt();
+
+// Cutscene skip (enhance/cutscene_skip.cpp). PADRead: Start during a movie starts the skip and is
+// hidden from the game. cutscene_turbo: true while skipping (frames run as original frames, unpaced).
+void cutscene_filter_pad(ppc_ctx* c, uint32_t status);
+bool cutscene_turbo(ppc_ctx* c);
+
+// Cheats (enhance/cheats.cpp; menu in ui/cheat_menu.cpp). Requests are queued by the menu and run
+// at the top of the next game frame (cheats_frame, from the System::updateSysClock hook).
+struct Cheats {
+    bool invincible = false;   // Olimar's health stays full
+    bool freeze_time = false;  // the day's clock stops
+    bool fly = false;          // Olimar hovers; D-pad up/down changes the height
+};
+struct CheatStatus {
+    bool in_game = false;  // a captain exists (gameplay)
+    int pikmin = 0;        // pikmin on the field
+};
+Cheats& cheats();
+const CheatStatus& cheat_status();
+void cheat_spawn(int color, int count, int happa);  // color 0 blue, 1 red, 2 yellow; happa 0 leaf, 1 bud, 2 flower
+void cheat_all_flowers();
+void cheats_frame(ppc_ctx* c);
+// PADRead: a released pad while the menu is open; D-pad up/down go to fly mode.
+void cheats_filter_pad(ppc_ctx* c, uint32_t status, bool menu_open);
 
 // Hooks from the GX shims (graphics builds only).
 void on_set_projection(float m[16], uint32_t type);  // adjusts 2D projections in place
@@ -50,5 +80,7 @@ void route_right_stick(ppc_ctx* c, uint32_t status, bool swarm_modifier);
 // Guest globals used by the patches (PAL GPIP01 addresses, from build.map).
 constexpr uint32_t kGsysPtr = 0x803ec9ccu;  // System* gsys
 constexpr uint32_t kFrameTimeOff = 0x290;  // float System::mFrameTime
+// MoviePlayer* (gameflow.mMoviePlayer); +0x124 (u8) = a movie is playing.
+constexpr uint32_t kMoviePlayerPtr = 0x803a2814u;
 
 }  // namespace enh

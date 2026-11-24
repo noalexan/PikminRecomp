@@ -41,9 +41,12 @@ namespace {
 float g_orig_frames = 1.f;
 float g_step_acc = 1.f;  // original frames not yet stepped (starts full: the first frame steps)
 int g_steps = 1;
+float g_step_dt = 1.f / 30.f;  // frame time the original game used per frame (clamped to 1/30 s)
 }
 float orig_frames() { return original_timing() ? 1.f : g_orig_frames; }
 int orig_frame_steps() { return original_timing() ? 1 : g_steps; }
+float orig_frame_phase() { return original_timing() ? 0.f : g_step_acc; }
+float orig_frame_dt() { return g_step_dt; }
 
 int effective_fps() {
     const Settings& s = settings();
@@ -104,14 +107,16 @@ extern "C" {
 // copies the EFB to the XFB. Unlocked: wait for the next host frame slot instead.
 void hle_waitRetrace__11DGXGraphicsFv(ppc_ctx* c) {
     HLE_ENTRY(c, "DGXGraphics::waitRetrace");
-    if (enh::original_timing() || !f_80047c68_orig || !hle_GXCopyDisp) {
+    // Cutscene skip (turbo): unpaced frames, also when the original pacing is selected.
+    const bool turbo = enh::cutscene_turbo(c);
+    if ((enh::original_timing() && !turbo) || !f_80047c68_orig || !hle_GXCopyDisp) {
         if (f_80047c68_orig) f_80047c68_orig(c);
         if (rt::gfx_active()) rt::perf_frame(enh::host_now(), 0, 0, 1.0 / 25.0);  // debug HUD
         return;
     }
     const uint32_t self = rt::arg(c, 0);
     const double t0 = enh::host_now();
-    enh::pace_frame();
+    if (!turbo) enh::pace_frame();  // a vsync'd window still paces at the swap
     const double t1 = enh::host_now();
     c->r[3] = 1;  // GXSetZMode(GX_TRUE, GX_LEQUAL, GX_TRUE)
     c->r[4] = 3;
@@ -135,7 +140,18 @@ void hle_updateSysClock__6SystemFv(ppc_ctx* c) {
     HLE_ENTRY(c, "System::updateSysClock");
     const uint32_t self = rt::arg(c, 0);
     if (f_80044834_orig) f_80044834_orig(c);
-    if (!enh::original_timing()) {
+    enh::cheats_frame(c);  // queued cheat-menu requests and per-frame cheats (enhance/cheats.cpp)
+    if (enh::cutscene_turbo(c)) {
+        // Cutscene skip: every frame is one original frame (original frame time, steps once).
+        const uint32_t rpf = std::max<uint32_t>(1, rt::rd32(c, self + 0x14));
+        enh::g_step_dt = std::min(0.02f * static_cast<float>(rpf), 1.f / 30.f);
+        enh::g_orig_frames = 1.f;
+        enh::g_steps = 1;
+        enh::g_step_acc = 0.f;
+        uint32_t u;
+        std::memcpy(&u, &enh::g_step_dt, 4);
+        rt::wr32(c, self + enh::kFrameTimeOff, u);
+    } else if (!enh::original_timing()) {
         uint32_t u = rt::rd32(c, self + enh::kFrameTimeOff);
         float dt;
         std::memcpy(&dt, &u, 4);
@@ -144,6 +160,7 @@ void hle_updateSysClock__6SystemFv(ppc_ctx* c) {
         // clamped to 1/30 s, so at 25 fps the game ran at 0.833x real time. Same factor here.
         const uint32_t rpf = std::max<uint32_t>(1, rt::rd32(c, self + 0x14));
         const float orig_frame = 0.02f * static_cast<float>(rpf);
+        enh::g_step_dt = std::min(orig_frame, 1.f / 30.f);
         enh::g_orig_frames = std::min(dt / orig_frame, 4.f);
         enh::g_step_acc += enh::g_orig_frames;
         enh::g_steps = std::min(static_cast<int>(enh::g_step_acc), 4);

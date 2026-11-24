@@ -1,6 +1,7 @@
 // PAD: aurora's SDL input when graphics are active (keyboard + gamepads), "no controller" when headless.
 // A test input script (--input-script) overrides port 0 in both modes.
 #include "enhance/enhance.hpp"
+#include "ui/cheat_menu.hpp"
 #include "rt/gfx.hpp"
 #include "rt/guest.hpp"
 #include "rt/input_record.hpp"
@@ -107,6 +108,8 @@ void hle_PADRead(ppc_ctx* c) {
         write_no_controller(c, status);
     }
     swarm = apply_script(c, status) || swarm;
+    enh::cheats_filter_pad(c, status, ui::cheat_menu_open());  // menu open: released pad; fly: D-pad
+    enh::cutscene_filter_pad(c, status);  // Start during a movie: skip it (enhance/cutscene_skip.cpp)
     rt::input_record(rt::vi_retrace_count(), rt::rd16(c, status), static_cast<int8_t>(rt::rd8(c, status + 2)),
                      static_cast<int8_t>(rt::rd8(c, status + 3)), static_cast<int8_t>(rt::rd8(c, status + 4)),
                      static_cast<int8_t>(rt::rd8(c, status + 5)), swarm);

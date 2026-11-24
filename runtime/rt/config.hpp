@@ -20,6 +20,9 @@ struct Config {
     int target_fps = 0;
     float hud_scale = 0.5f;  // gameplay HUD size relative to the original (anchored to screen edges)
     bool modern_camera = true;
+    // In-game movies on a wide screen: true = fill it (original horizontal FOV, top/bottom cropped),
+    // false = widen (Hor+; some intro shots then show the edges of their 4:3 backdrops).
+    bool cutscene_fill = true;
     bool debug_hud = false;  // F3 panel shown at start  // right stick orbits/tilts the camera; modifier + right stick swarms
     std::vector<std::string> warnings;
 };

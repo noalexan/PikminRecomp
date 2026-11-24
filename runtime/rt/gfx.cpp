@@ -49,6 +49,7 @@ void gfx_set_aspect_4_3(bool) {}
 void gfx_on_fullscreen_toggled(void (*)(bool)) {}
 GpuInfo gfx_adapter_info() { return {}; }
 void gfx_set_hud(void (*)(), void (*)()) {}
+void gfx_set_menu(void (*)(), void (*)()) {}
 #else
 
 namespace {
@@ -61,6 +62,8 @@ uint32_t g_begin_failures = 0;
 void (*g_fullscreen_cb)(bool) = nullptr;
 void (*g_hud_draw)() = nullptr;
 void (*g_hud_toggle)() = nullptr;
+void (*g_menu_draw)() = nullptr;
+void (*g_menu_toggle)() = nullptr;
 
 struct Screenshot {
     uint32_t frame = 0;
@@ -233,6 +236,11 @@ void gfx_set_hud(void (*draw)(), void (*toggle)()) {
     g_hud_toggle = toggle;
 }
 
+void gfx_set_menu(void (*draw)(), void (*toggle)()) {
+    g_menu_draw = draw;
+    g_menu_toggle = toggle;
+}
+
 GpuInfo gfx_adapter_info() {
     static GpuInfo info;
     static bool have = false;
@@ -279,6 +287,7 @@ void gfx_present() {
     }
     if (g_in_frame) {
         if (g_hud_draw) g_hud_draw();
+        if (g_menu_draw) g_menu_draw();
         aurora_end_frame();
     }
     static const bool stats = std::getenv("PIKMIN_GFX_STATS") != nullptr;
@@ -303,6 +312,19 @@ void gfx_present() {
         if (ev->type == AURORA_SDL_EVENT && ev->sdl.type == SDL_EVENT_KEY_DOWN && ev->sdl.key.key == SDLK_F3 &&
             !ev->sdl.key.repeat) {
             if (g_hud_toggle) g_hud_toggle();
+        }
+        if (ev->type == AURORA_SDL_EVENT && ev->sdl.type == SDL_EVENT_KEY_DOWN && ev->sdl.key.key == SDLK_F1 &&
+            !ev->sdl.key.repeat) {
+            if (g_menu_toggle) g_menu_toggle();
+        }
+        // L3 + R3 (both sticks clicked; unused by the game's layout): the second click toggles.
+        if (ev->type == AURORA_SDL_EVENT && ev->sdl.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN &&
+            (ev->sdl.gbutton.button == SDL_GAMEPAD_BUTTON_LEFT_STICK ||
+             ev->sdl.gbutton.button == SDL_GAMEPAD_BUTTON_RIGHT_STICK)) {
+            const auto other = ev->sdl.gbutton.button == SDL_GAMEPAD_BUTTON_LEFT_STICK ? SDL_GAMEPAD_BUTTON_RIGHT_STICK
+                                                                                       : SDL_GAMEPAD_BUTTON_LEFT_STICK;
+            SDL_Gamepad* pad = SDL_GetGamepadFromID(ev->sdl.gbutton.which);
+            if (pad && SDL_GetGamepadButton(pad, other) && g_menu_toggle) g_menu_toggle();
         }
     }
     g_in_frame = aurora_begin_frame();  // false while minimised/pending: keep running, game time must not stall

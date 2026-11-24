@@ -275,12 +275,30 @@ void hle_update__11CamDataInfoFfR8Matrix4f(ppc_ctx* c) {
     uint32_t u = rt::rd32(c, ea);
     float a;
     std::memcpy(&a, &u, 4);
+    const uint32_t self = rt::arg(c, 0);
     const float wide = enh::view_aspect();
     if (std::fabs(a - 4.f / 3.f) < 0.02f && wide > 4.f / 3.f + 0.001f) {
         std::memcpy(&u, &wide, 4);
         rt::wr32(c, ea, u);
     }
     if (f_8002a55c_orig) f_8002a55c_orig(c);
+    // In-game movies (MoviePlayer active) are staged for 4:3: the intro's sky and landscape shots
+    // are backdrops that end at the 4:3 frame edges. Fill the wide screen instead: keep the
+    // original horizontal FOV and narrow the vertical one (crops top and bottom). The title
+    // screen's cinematic (no MoviePlayer movie) stays Hor+.
+    const uint32_t mp = rt::rd32(c, enh::kMoviePlayerPtr);
+    if (enh::settings().cutscene_fill && wide > 4.f / 3.f + 0.001f && mp && rt::rd8(c, mp + 0x124)) {
+        const uint32_t fov_ea = self + 0xa8 + 0x1cc;  // CullFrustum fov (degrees, vertical)
+        uint32_t fu = rt::rd32(c, fov_ea);
+        float fov;
+        std::memcpy(&fov, &fu, 4);
+        if (fov > 1.f && fov < 170.f) {
+            constexpr float kDeg = 3.14159265f / 180.f;
+            fov = 2.f * std::atan(std::tan(fov * 0.5f * kDeg) * (4.f / 3.f) / wide) / kDeg;
+            std::memcpy(&fu, &fov, 4);
+            rt::wr32(c, fov_ea, fu);
+        }
+    }
 }
 
 // MapMgr::postrefresh copies the EFB (Texture::grabBuffer) and draws it back over the whole screen

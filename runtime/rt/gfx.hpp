@@ -38,6 +38,8 @@ void gfx_set_aspect_4_3(bool on);
 void gfx_on_fullscreen_toggled(void (*cb)(bool fullscreen));
 // Debug HUD hooks (ui/debug_hud): drawn inside the ImGui frame before it ends; F3 toggles it.
 void gfx_set_hud(void (*draw)(), void (*toggle)());
+// Cheat menu hooks (ui/cheat_menu): drawn after the HUD; F1 or L3 + R3 on a gamepad toggles it.
+void gfx_set_menu(void (*draw)(), void (*toggle)());
 // The GPU Dawn picked (name, backend, PCI vendor/device); empty without graphics.
 GpuInfo gfx_adapter_info();
 // Closes a GXBegin left open by guest code (real implementation in the GX shims).
