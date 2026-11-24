@@ -46,21 +46,28 @@ Os detect_os() {
 QString install_hint(Os os) {
     switch (os) {
         case Os::Fedora:
-            return "sudo dnf install -y gcc-c++ cmake ninja-build python3 git SDL3-devel vulkan-headers vulkan-loader-devel "
-                   "libpng-devel zlib-devel libzstd-devel freetype-devel fmt-devel wayland-devel libxkbcommon-devel";
+            return "sudo dnf install -y gcc-c++ cmake ninja-build python3 git vulkan-headers vulkan-loader-devel "
+                   "libpng-devel zlib-devel libzstd-devel freetype-devel fmt-devel wayland-devel libxkbcommon-devel "
+                   "libdecor-devel libX11-devel libXext-devel libXcursor-devel libXi-devel libXfixes-devel "
+                   "libXrandr-devel libXScrnSaver-devel libXtst-devel alsa-lib-devel pipewire-devel "
+                   "pulseaudio-libs-devel systemd-devel dbus-devel";
         case Os::Debian:
-            return "sudo apt install -y g++ cmake ninja-build python3 git libsdl3-dev libvulkan-dev libpng-dev zlib1g-dev "
-                   "libzstd-dev libfreetype-dev libfmt-dev libwayland-dev libxkbcommon-dev";
+            return "sudo apt install -y g++ cmake ninja-build python3 git libvulkan-dev libpng-dev zlib1g-dev "
+                   "libzstd-dev libfreetype-dev libfmt-dev libwayland-dev libxkbcommon-dev libdecor-0-dev "
+                   "libx11-dev libxext-dev libxcursor-dev libxi-dev libxfixes-dev libxrandr-dev libxss-dev "
+                   "libxtst-dev libasound2-dev libpipewire-0.3-dev libpulse-dev libudev-dev libdbus-1-dev";
         case Os::Arch:
-            return "sudo pacman -S --needed gcc cmake ninja python git sdl3 vulkan-headers vulkan-icd-loader libpng zlib zstd "
-                   "freetype2 fmt wayland libxkbcommon";
+            return "sudo pacman -S --needed gcc cmake ninja python git vulkan-headers vulkan-icd-loader libpng zlib zstd "
+                   "freetype2 fmt wayland wayland-protocols libxkbcommon libdecor libx11 libxext libxcursor libxi "
+                   "libxfixes libxrandr libxss libxtst alsa-lib pipewire libpulse systemd-libs dbus";
         case Os::Windows:
-            return "pacman -S --needed mingw-w64-ucrt-x86_64-{gcc,cmake,ninja,python,SDL3,vulkan-headers,vulkan-loader,libpng,"
+            return "pacman -S --needed mingw-w64-ucrt-x86_64-{gcc,cmake,ninja,python,vulkan-headers,vulkan-loader,libpng,"
                    "zlib,zstd,freetype} git";
         case Os::OtherLinux: break;
     }
-    return "Install: a C++20 compiler, cmake 3.25+, ninja, Python 3.11+, git, SDL3, Vulkan headers/loader, libpng, zlib, "
-           "zstd, freetype (development packages).";
+    return "Install: a C++20 compiler, cmake 3.25+, ninja, Python 3.11+, git, Vulkan headers/loader, libpng, zlib, "
+           "zstd, freetype, and SDL3's build dependencies: Wayland, X11, ALSA, PipeWire, PulseAudio, udev, D-Bus "
+           "(development packages; SDL3 itself is built with the game).";
 }
 
 }  // namespace launcher

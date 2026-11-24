@@ -12,7 +12,33 @@ set(AURORA_ENABLE_THP OFF CACHE BOOL "" FORCE)
 set(AURORA_ENABLE_RMLUI OFF CACHE BOOL "" FORCE)
 set(AURORA_ENABLE_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(AURORA_ENABLE_TESTS OFF CACHE BOOL "" FORCE)
-set(AURORA_SDL3_PROVIDER system CACHE STRING "" FORCE)
+# SDL3: the system package by default (dev builds). PIKMIN_VENDOR_SDL3 builds SDL3 from source
+# (aurora's pinned release) and links it statically into pikmin: the launcher's builds use it, so
+# players need no SDL3 package (Debian 12 / Ubuntu 24.04 have none) and the game carries no SDL3.dll.
+option(PIKMIN_VENDOR_SDL3 "Build SDL3 from source and link it statically" OFF)
+if (PIKMIN_VENDOR_SDL3)
+    set(AURORA_SDL3_PROVIDER vendor CACHE STRING "" FORCE)
+    set(AURORA_SDL3_LINKAGE static CACHE STRING "" FORCE)
+    set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
+    # SDL skips any optional backend whose headers are missing, except the X11 extensions, which
+    # stop the configure. Leave out the ones this machine has no headers for.
+    if (UNIX AND NOT APPLE)
+        foreach (_ext XCURSOR:X11/Xcursor/Xcursor.h XDBE:X11/extensions/Xdbe.h XINPUT:X11/extensions/XInput2.h
+                      XFIXES:X11/extensions/Xfixes.h XSYNC:X11/extensions/sync.h XRANDR:X11/extensions/Xrandr.h
+                      XSCRNSAVER:X11/extensions/scrnsaver.h XSHAPE:X11/extensions/shape.h XTEST:X11/extensions/XTest.h)
+            string(REPLACE ":" ";" _ext "${_ext}")
+            list(GET _ext 0 _name)
+            list(GET _ext 1 _header)
+            find_path(PIKMIN_HAVE_${_name} ${_header})
+            if (NOT PIKMIN_HAVE_${_name})
+                message(STATUS "SDL3: no ${_header}, building without ${_name}")
+                set(SDL_X11_${_name} OFF CACHE BOOL "" FORCE)
+            endif ()
+        endforeach ()
+    endif ()
+else ()
+    set(AURORA_SDL3_PROVIDER system CACHE STRING "" FORCE)
+endif ()
 set(AURORA_DAWN_PROVIDER vendor CACHE STRING "" FORCE)
 set(AURORA_DAWN_LINKAGE static CACHE STRING "" FORCE)
 if (MINGW)

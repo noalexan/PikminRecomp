@@ -449,7 +449,9 @@ void Launcher::build() {
                      }});
     steps.push_back({"Configuring", 7, [this, src, build, stage] {
                          run_process("cmake", {"-S", src, "-B", build, "-G", "Ninja", "-DCMAKE_BUILD_TYPE=Release",
-                                               "-DCMAKE_INSTALL_PREFIX=" + stage},
+                                               "-DCMAKE_INSTALL_PREFIX=" + stage,
+                                               // SDL3 built from source, linked into the game.
+                                               "-DPIKMIN_VENDOR_SDL3=ON"},
                                      src);
                      }});
     steps.push_back({"Recompiling the game", 75, [this, build, src] {

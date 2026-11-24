@@ -19,7 +19,9 @@ does it all behind a friendly, Pikmin-styled window, on Linux and Windows.
 - **Checks, each shown as a row with a state (ok / problem with a fix / working):**
   - **Toolchain:** C/C++ compiler (GCC), cmake ≥ 3.25, ninja, Python ≥ 3.11, git (the game build
     fetches aurora and Dawn with git) and the game's libraries
-    (SDL3, Vulkan headers, libpng, zlib, zstd, freetype). Missing pieces are listed with the exact
+    (Vulkan headers, libpng, zlib, zstd, freetype; SDL3 is built from source and linked statically into
+    the game, `-DPIKMIN_VENDOR_SDL3=ON`, so only its backends' headers are needed: Wayland, X11, ALSA,
+    PipeWire, PulseAudio, udev, D-Bus). Missing pieces are listed with the exact
     command to install them (Linux: one `sudo dnf install …` / `apt` line; Windows: MSYS2, below).
   - **ROM:** the player picks a disc image. Checked: GameCube magic, game ID `GPIP01` (PAL Pikmin),
     and the SHA-1 of `main.dol` and the file table against the values this project is built for
@@ -85,7 +87,7 @@ Saves/config remain the game's (`~/.local/share/pikminrecomp`, `%APPDATA%\pikmin
 ### Windows toolchain
 
 MSYS2 UCRT64 (`C:\msys64` or found via the registry/PATH): `pacman -S --needed
-mingw-w64-ucrt-x86_64-{gcc,cmake,ninja,python,SDL3,vulkan-headers,vulkan-loader,libpng,zlib,zstd,freetype}`.
+mingw-w64-ucrt-x86_64-{gcc,cmake,ninja,python,vulkan-headers,vulkan-loader,libpng,zlib,zstd,freetype}`.
 If MSYS2 is missing, the launcher offers to download and run its official installer (after the
 player confirms), then shows the pacman line to paste (or runs it in an MSYS2 shell on confirm).
 The game build runs `cmake`/`ninja` from that environment. *Untested until a Windows machine is

@@ -207,6 +207,9 @@ releases of `noalexan/PikminRecomp`, checks the toolchain and the disc (`GPIP01`
 and `fst.bin` in `src/core/rom.hpp`), downloads the source of its own version (`v<ver>` tag), extracts
 the disc, builds and installs the game into `~/.local/share/pikminrecomp-launcher/` (`%LOCALAPPDATA%`),
 and plays it. Design: `docs/superpowers/specs/2026-11-23-launcher-design.md`.
+Its game builds pass `-DPIKMIN_VENDOR_SDL3=ON` (`extern/aurora.cmake`): SDL3 is built from aurora's
+pinned source and linked statically, so players need only SDL's backend headers (X11 extensions whose
+headers are missing are switched off; Wayland/X11/audio are dlopened at runtime). Dev builds use system SDL3.
 
 ```sh
 cmake -S launcher -B build/launcher -G Ninja && cmake --build build/launcher && build/launcher/core_test
